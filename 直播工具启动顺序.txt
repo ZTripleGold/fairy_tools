@@ -1,0 +1,8 @@
+1. 启动 BarrageGrab 抓取弹幕
+2. 修改 fairy_live.py 中的弹幕路径
+3. 点击 GPT-SoVITS 的 go-api.bat
+4. 点击 start.bat
+
+
+
+防卫战更新！关注抢码！危局/防卫战/临界，墨镜三间
