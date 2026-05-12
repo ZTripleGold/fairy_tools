@@ -700,28 +700,10 @@ def safe_filename(text: str, max_len=80) -> str:
         safe = safe[:max_len]
     return safe
 
-
-def get_fixed_audio_path(key: str, text: str) -> str:
-    """根据配置key和文本生成预录制音频路径"""
-    base_dir = r"E:\liveTools\Fairy\语录\关键词"
-    folder = os.path.join(base_dir, key)
-    filename = safe_filename(text) + ".mp3"
-    return os.path.join(folder, filename)
-
-
-async def play_local_audio_enqueue(file_path: str, role: str, text: str):
-    """将本地音频文件加入播放队列（不经过TTS）"""
-    if os.path.exists(file_path):
-        await play_queue.put((file_path, role, text))
-        print(f"📁 [{role}] 本地音频已加入播放队列：{text[:30]}...")
-    else:
-        print(f"⚠️ 本地音频缺失：{file_path}，将使用TTS生成")
-        await generate_tts_and_enqueue(text, role)
-
 async def play_local_or_tts(base_dir: str, role: str, text: str):
     """
-    优先播放 base_dir 下的预录制语音，缺失则使用 TTS 生成。
-    文件名由 safe_filename(text) + '.mp3' 构成。
+    优先播放 base_dir 下的预录制语音（文件名为 safe_filename(text).mp3），
+    缺失则使用 TTS 合成后入队。
     """
     filename = safe_filename(text) + ".mp3"
     file_path = os.path.join(base_dir, filename)
@@ -1129,8 +1111,8 @@ async def monitor_log_file(file_path, keywords, log_type):
                             f"🧚 [{log_type}] {fixed_role.upper()}固定回复：{fixed_reply}"
                         )
                         # 播放预录制语音（优先本地文件，缺失则TTS）
-                        audio_path = get_fixed_audio_path(key, fixed_reply)
-                        await play_local_audio_enqueue(audio_path, fixed_role, fixed_reply)
+                        keyword_folder = rf"E:\liveTools\Fairy\语录\关键词\{key}"
+                        await play_local_or_tts(keyword_folder, fixed_role, fixed_reply)
                         continue
 
                 # 普通弹幕/礼物回复逻辑（保持判断 trigger_role、冷却等不变）
@@ -1286,8 +1268,8 @@ async def monitor_log_file(file_path, keywords, log_type):
                             f"🧚 [{log_type}] {fixed_role.upper()}固定回复：{fixed_reply}"
                         )
                         # 播放预录制语音（优先本地文件，缺失则TTS）
-                        audio_path = get_fixed_audio_path(key, fixed_reply)
-                        await play_local_audio_enqueue(audio_path, fixed_role, fixed_reply)
+                        keyword_folder = rf"E:\liveTools\Fairy\语录\关键词\{key}"
+                        await play_local_or_tts(keyword_folder, fixed_role, fixed_reply)
                         continue
 
                 # 普通弹幕/礼物回复逻辑（保持判断 trigger_role、冷却等不变）
@@ -1489,7 +1471,7 @@ async def scheduled_chat_task():
     print(
         f"✅ 定时对话启动（基础间隔{CHAT_BASE_INTERVAL}秒，随机偏移±{CHAT_RANDOM_OFFSET}秒）"
     )
-    print(f"📊 对话概率分配：Fairy独白 60% | Fairy→Youkai 20% | Youkai→Fairy 20%")
+    print(f"📊 对话概率分配：Fairy独白 90% | Fairy→Youkai 5% | Youkai→Fairy 5%")
 
     while True:
         try:
