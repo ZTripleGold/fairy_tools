@@ -54,9 +54,14 @@ QWEN_CONFIG = {
 }
 
 # 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月12日直播\场次7638633180060240640\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月12日直播\场次7638633180060240640\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月12日直播\场次7638633180060240640\进直播间.txt"
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\进直播间.txt"
+
+# ===================== 扫码语录配置 =====================
+SCAN_AUDIO_PATH = r"E:\liveTools\Fairy\语录\扫码语录.mp3"
+SCAN_INTERVAL = 30       # 每 30 秒播放一次
+SCAN_RESUME_DELAY = 10   # TTS 结束后 10 秒再恢复
 
 # 新增【指定欢迎用户列表】
 WELCOME_USERS = [
@@ -127,7 +132,7 @@ FIXED_REPLY_CONFIG = {
         "role": "fairy",
     },
     "praise": {
-        "keywords": ["厉害", "6", "牛", "高手"],
+        "keywords": ["厉害", "666", "牛", "高手"],
         "reply_text": [
             "收到表扬。但数据表明，这只是偶然现象，请您保持冷静。",
             "收到表扬。但数据表明，这属于概率极低的偶然事件，请勿产生自信错觉。",
@@ -555,6 +560,12 @@ is_playing_queue = False
 # 已播放的临时文件列表（用于最后清理）
 played_temp_files = set()
 
+# ===================== 新增：TTS活跃状态标志 =====================
+tts_active = False  # True=正在播放TTS或队列中有待播TTS
+# ===================== 新增：双轨音频暂停控制（完全隔离） =====================
+scan_paused = False   # 空格键：控制扫码语录
+tts_paused = False    # Z键：控制TTS语音
+
 
 # ================================== 初始化OpenAI客户端 ==================================
 def init_modelscope_client():
@@ -835,47 +846,125 @@ async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
         processing_count[0] -= 1
 
 
+# ===================== 扫码语录循环协程 =====================
+async def scan_audio_loop():
+    """每30秒播放扫码语录，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
+    global tts_active, scan_paused
+
+    if not os.path.exists(SCAN_AUDIO_PATH):
+        print(f"❌ 找不到扫码语录：{SCAN_AUDIO_PATH}")
+        return
+
+    print(f"🔊 扫码语录循环已启动（间隔{SCAN_INTERVAL}秒，空格暂停，Z不影响）")
+    clock = pygame.time.Clock()
+    accumulated = 0
+    interval_ms = SCAN_INTERVAL * 1000
+
+    while True:
+        dt = clock.tick(30)
+
+        # 只有未被人为暂停（空格）时才累加计时器
+        if not scan_paused:
+            accumulated += dt
+
+            # 到达触发时间点
+            if accumulated >= interval_ms:
+                if tts_active:
+                    print("⏸️ 扫码语录触发时TTS正在播放，本次顺延")
+                    accumulated = interval_ms  # 保持满格，等TTS结束后再触发
+                else:
+                    try:
+                        pygame.mixer.music.load(SCAN_AUDIO_PATH)
+                        pygame.mixer.music.play()
+                        print("🔊 扫码语录播放中...")
+                        accumulated = 0
+                    except Exception as e:
+                        print(f"❌ 扫码语录播放异常：{e}")
+                        accumulated = 0
+
+            # 如果正在播放扫码语录，实时检测TTS插入
+            if pygame.mixer.music.get_busy():
+                if tts_active:
+                    pygame.mixer.music.pause()
+                    print("⏸️ 扫码语录被TTS暂停（礼让）")
+                    # 等待TTS全部结束
+                    while tts_active:
+                        await asyncio.sleep(0.1)
+                    # TTS结束后，如果用户没按空格暂停，等10秒再恢复
+                    if not scan_paused:
+                        print(f"⏳ TTS结束，{SCAN_RESUME_DELAY}秒后恢复扫码语录...")
+                        await asyncio.sleep(SCAN_RESUME_DELAY)
+                        pygame.mixer.music.unpause()
+                        print("▶️ 扫码语录恢复播放")
+                    else:
+                        print("⏸️ TTS结束，但扫码语录处于手动暂停状态，不自动恢复")
+
+        await asyncio.sleep(0.01)
+
+
 # ===================== 音频播放队列消费协程 =====================
 async def audio_play_worker():
-    """播放队列消费协程（单例运行，确保音频按顺序播放，不会重叠）"""
-    global is_playing_queue
+    """TTS播放队列（Z键控制暂停，与扫码语录互不影响但不能同时播放）"""
+    global is_playing_queue, tts_active
     is_playing_queue = True
-    print("🎵 音频播放队列已启动（按顺序播放，不重叠）")
+    print("🎵 TTS播放队列已启动（Z键暂停/继续，与扫码语录隔离）")
 
     while True:
         try:
-            # 从队列获取待播放任务（阻塞等待）
             temp_audio_path, role, text = await play_queue.get()
+            tts_active = True
 
-            # 检查文件是否存在
-            if not os.path.exists(temp_audio_path):
-                print(f"❌ [{role}] 音频文件不存在，跳过播放：{temp_audio_path}")
-                play_queue.task_done()
-                continue
+            # 如果扫码语录正在播放，暂停它（不能同时播放）
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.pause()
+                print("⏸️ 扫码语录因TTS开始而暂停")
 
             try:
-                # 使用Sound对象（多通道）播放，不占用唯一的music通道
                 sound = pygame.mixer.Sound(temp_audio_path)
                 channel = sound.play()
                 if channel:
                     print(f"▶️ [{role.upper()}] 开始播放：{text[:50]}...")
-                    # 等待播放完成
                     while channel.get_busy():
+                        # 检测Z键暂停（只影响TTS，不影响扫码语录）
+                        if tts_paused:
+                            pygame.mixer.pause()
+                            while tts_paused:
+                                await asyncio.sleep(0.1)
+                            pygame.mixer.unpause()
                         await asyncio.sleep(0.1)
                     print(f"✅ [{role.upper()}] 播放完成：{text[:50]}...")
                 else:
-                    print(f"❌ [{role}] 音频通道分配失败，播放失败")
+                    print(f"❌ [{role}] 音频通道分配失败")
             except Exception as e:
                 print(f"❌ [{role}] 播放异常：{e}")
             finally:
-                # 标记为已播放，加入清理列表
                 played_temp_files.add(temp_audio_path)
-                # 完成队列任务
                 play_queue.task_done()
+
+                # 延迟判断队列是否空了
+                await asyncio.sleep(0.3)
+                if play_queue.qsize() == 0:
+                    print(f"⏳ TTS队列空闲，{SCAN_RESUME_DELAY}秒后恢复扫码语录...")
+                    await asyncio.sleep(SCAN_RESUME_DELAY)
+                    tts_active = False
+                    # 只有用户没按空格暂停扫码语录时才恢复
+                    if not scan_paused:
+                        try:
+                            pygame.mixer.music.unpause()
+                            print("▶️ 扫码语录恢复（TTS礼让结束）")
+                        except Exception:
+                            pass
+                    else:
+                        print("⏸️ 扫码语录保持手动暂停状态")
+                # 队列还有任务则继续播下一条，tts_active保持True
 
         except Exception as e:
             print(f"❌ 播放队列异常：{e}")
-            play_queue.task_done()
+            tts_active = False
+            try:
+                play_queue.task_done()
+            except:
+                pass
             await asyncio.sleep(1)
 
 
@@ -904,6 +993,50 @@ async def clean_temp_files():
 
         if deleted_count > 0:
             print(f"🗑️ 清理了{deleted_count}个已播放的临时音频文件")
+
+
+# ===================== 新增：键盘监听协程 =====================
+async def keyboard_listener():
+    """后台监听键盘：空格=扫码语录 | Z=TTS，两者完全隔离"""
+    global scan_paused, tts_paused
+    pygame.display.init()
+    screen = pygame.display.set_mode((400, 100))
+    pygame.display.set_caption("语音控制 - 空格=扫码语录 | Z=TTS")
+    print("⌨️ 键盘监听已启动：【空格】暂停/继续扫码语录 | 【Z】暂停/继续TTS")
+
+    clock = pygame.time.Clock()
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            
+            if event.type == pygame.KEYDOWN:
+                # 空格键：只控制扫码语录
+                if event.key == pygame.K_SPACE:
+                    scan_paused = not scan_paused
+                    if scan_paused:
+                        pygame.mixer.music.pause()
+                        print("⏸️ 扫码语录已手动暂停（倒计时冻结）")
+                    else:
+                        # 只有TTS没活跃时才真正恢复播放
+                        if not tts_active:
+                            pygame.mixer.music.unpause()
+                            print("▶️ 扫码语录已继续")
+                        else:
+                            print("▶️ 扫码语录待恢复（当前TTS占用中）")
+                
+                # Z键：只控制TTS（Sound通道）
+                elif event.key == pygame.K_z:
+                    tts_paused = not tts_paused
+                    if tts_paused:
+                        pygame.mixer.pause()
+                        print("⏸️ TTS已手动暂停")
+                    else:
+                        pygame.mixer.unpause()
+                        print("▶️ TTS已继续")
+        clock.tick(30)
+        await asyncio.sleep(0.01)
 
 
 # ================================== ModelScope API调用 ==================================
@@ -1505,6 +1638,10 @@ async def main():
     asyncio.create_task(audio_play_worker())
     # 启动临时文件清理协程
     asyncio.create_task(clean_temp_files())
+    # 启动扫码语录循环协程（每30秒播放，TTS时自动暂停）
+    asyncio.create_task(scan_audio_loop())
+        # 启动键盘监听协程（空格键控制所有语音暂停/继续）
+    asyncio.create_task(keyboard_listener())
 
     # 启动所有监控任务
     try:
@@ -1573,4 +1710,10 @@ if __name__ == "__main__":
             pygame.mixer.quit()
         except:
             pass
+        # ↓↓↓ 新增：关闭键盘监听窗口 ↓↓↓
+        try:
+            pygame.display.quit()
+        except:
+            pass
+        # ↑↑↑ 新增结束 ↑↑↑
         print("✅ 程序已安全退出")
