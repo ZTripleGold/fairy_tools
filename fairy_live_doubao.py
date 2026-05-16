@@ -29,7 +29,7 @@ CRASH_LOG_FILE = os.path.join(CRASH_LOG_DIR, "fairy_crash.log")
 
 # ================================== 核心参数 ==================================
 # ModelScope 官方OpenAI兼容配置
-MODELSCOPE_ACCESS_TOKEN = "ms-d627a02d-920a-462e-8348-4eec8fb7766f"
+MODELSCOPE_ACCESS_TOKEN = "ms-1830d5ee-f145-4afe-ab10-55979c7d70df"
 # 官方指定的Base URL
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/"
 # 选定的模型ID
@@ -54,13 +54,13 @@ QWEN_CONFIG = {
 }
 
 # 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\进直播间.txt"
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\进直播间.txt"
 
 # ===================== 扫码语录配置 =====================
-SCAN_AUDIO_PATH = r"E:\liveTools\Fairy\语录\扫码语录.mp3"
-SCAN_INTERVAL = 30       # 每 30 秒播放一次
+SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"  # 目录路径（随机播放该目录下所有mp3）
+SCAN_INTERVAL = 60       # 每 60 秒触发一次
 SCAN_RESUME_DELAY = 10   # TTS 结束后 10 秒再恢复
 
 # 新增【指定欢迎用户列表】
@@ -73,6 +73,7 @@ WELCOME_USERS = [
     "晶典",
     "吉田宽文",
     "转生",
+    "何须落寞"
 ]
 
 # Fairy 专属触发关键词
@@ -846,16 +847,31 @@ async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
         processing_count[0] -= 1
 
 
+def pick_random_scan_audio() -> Optional[str]:
+    """从扫码语录目录中随机挑选一个 mp3 文件"""
+    if not os.path.exists(SCAN_AUDIO_DIR):
+        return None
+    files = [f for f in os.listdir(SCAN_AUDIO_DIR) if f.lower().endswith(".mp3")]
+    if not files:
+        return None
+    return os.path.join(SCAN_AUDIO_DIR, random.choice(files))
+
 # ===================== 扫码语录循环协程 =====================
 async def scan_audio_loop():
-    """每30秒播放扫码语录，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
+    """每30秒随机播放扫码语录目录下的MP3，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
     global tts_active, scan_paused
 
-    if not os.path.exists(SCAN_AUDIO_PATH):
-        print(f"❌ 找不到扫码语录：{SCAN_AUDIO_PATH}")
+    if not os.path.exists(SCAN_AUDIO_DIR):
+        print(f"❌ 找不到扫码语录目录：{SCAN_AUDIO_DIR}")
         return
 
-    print(f"🔊 扫码语录循环已启动（间隔{SCAN_INTERVAL}秒，空格暂停，Z不影响）")
+    # 预扫描一次目录，确认有文件
+    sample = pick_random_scan_audio()
+    if not sample:
+        print(f"⚠️ 扫码语录目录中没有 .mp3 文件：{SCAN_AUDIO_DIR}")
+        return
+
+    print(f"🔊 扫码语录随机播放已启动（目录：{SCAN_AUDIO_DIR}，间隔{SCAN_INTERVAL}秒）")
     clock = pygame.time.Clock()
     accumulated = 0
     interval_ms = SCAN_INTERVAL * 1000
@@ -870,16 +886,21 @@ async def scan_audio_loop():
             # 到达触发时间点
             if accumulated >= interval_ms:
                 if tts_active:
-                    # print("⏸️ 扫码语录触发时TTS正在播放，本次顺延")
-                    accumulated = interval_ms  # 保持满格，等TTS结束后再触发
+                    # TTS正在播放，本次顺延
+                    accumulated = interval_ms
                 else:
-                    try:
-                        pygame.mixer.music.load(SCAN_AUDIO_PATH)
-                        pygame.mixer.music.play()
-                        print("🔊 扫码语录播放中...")
-                        accumulated = 0
-                    except Exception as e:
-                        print(f"❌ 扫码语录播放异常：{e}")
+                    audio_file = pick_random_scan_audio()
+                    if audio_file:
+                        try:
+                            pygame.mixer.music.load(audio_file)
+                            pygame.mixer.music.play()
+                            print(f"🔊 扫码语录播放中：{os.path.basename(audio_file)}")
+                            accumulated = 0
+                        except Exception as e:
+                            print(f"❌ 扫码语录播放异常：{e}")
+                            accumulated = 0
+                    else:
+                        print("⚠️ 未找到可用的扫码语录文件")
                         accumulated = 0
 
             # 如果正在播放扫码语录，实时检测TTS插入

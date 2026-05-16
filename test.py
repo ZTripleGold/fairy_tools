@@ -54,13 +54,13 @@ QWEN_CONFIG = {
 }
 
 # 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\进直播间.txt"
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\进直播间.txt"
 
 # ===================== 扫码语录配置 =====================
-SCAN_AUDIO_PATH = r"E:\liveTools\Fairy\语录\扫码语录.mp3"
-SCAN_INTERVAL = 30       # 每 30 秒播放一次
+SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"  # 目录路径（随机播放该目录下所有mp3）
+SCAN_INTERVAL = 60       # 每 60 秒触发一次
 SCAN_RESUME_DELAY = 10   # TTS 结束后 10 秒再恢复
 
 # 新增【指定欢迎用户列表】
@@ -114,7 +114,7 @@ FIXED_REPLY_CONFIG = {
             "检测到主人正在打牢号，主人，您已经放弃了思考吗？",
             "检测到主人正在坐牢，如果您想小憩，请允许我挑选曲目。我会用轻音乐和白噪声，编制您的梦。",
             "检测到主人正在打牢号，主人，您还好吗？",
-            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集",
+            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集。",
             "您又翻车了，是否需要我为您播放《从头再来》？不，我更建议先充个电冷静一下。",
             "检测到主人正在打牢号，当前伤害数据：不如邦布一锤子。建议放弃，或者继续折磨自己。",
             "正在分析牢号数据……结论：您的队伍配置没问题，有问题的只是运气。建议洗脸。",
@@ -178,8 +178,8 @@ TTS_API_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
 # 定时对话配置
 ENABLE_SCHEDULED_CHAT = True
-CHAT_BASE_INTERVAL = 300
-CHAT_RANDOM_OFFSET = 180
+CHAT_BASE_INTERVAL = 10
+CHAT_RANDOM_OFFSET = 0
 CHAT_ROUNDS = 1
 
 
@@ -734,92 +734,7 @@ async def tts_http_generate(text: str, save_path: str, role: str):
     :param role: fairy / youkai（你的两个训练音色）
     :return: 合成成功返回True，失败返回False
     """
-    # 1. 选择训练好的音色ID
-    speaker_id = FAIRY_VOICE_ID if role == "fairy" else YOUKAI_VOICE_ID
-
-    # 2. 官方标准请求体（完全复刻Demo结构）
-    request_body = {
-        "user": {"uid": str(uuid.uuid4())},
-        "req_params": {
-            "text": text,
-            "speaker": speaker_id,
-            "audio_params": {"format": "mp3", "sample_rate": 24000},
-        },
-    }
-
-    # 3. 官方强制请求头
-    headers = {
-        "X-Api-App-Id": TTS_APPID,
-        "X-Api-Access-Key": TTS_TOKEN,
-        "X-Api-Resource-Id": TTS_RESOURCE_ID,
-        "Content-Type": "application/json",
-        "Connection": "keep-alive",
-    }
-
-    # 存储拼接后的音频数据
-    audio_data = bytearray()
-
-    try:
-        # 4. 异步流式请求（对齐官方Demo逻辑）
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST", url=TTS_API_URL, json=request_body, headers=headers
-            ) as response:
-                response.raise_for_status()
-                logid = response.headers.get("X-Tt-Logid")
-                print(f"[{role}] 请求LogId: {logid}")
-
-                # ===================== 官方Demo核心逻辑：按行解析JSON =====================
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-
-                    # 解析服务端返回的JSON数据
-                    data = json.loads(line)
-                    code = data.get("code", 0)
-
-                    # 音频数据：base64解码拼接
-                    if code == 0 and data.get("data"):
-                        audio_chunk = base64.b64decode(data["data"])
-                        audio_data.extend(audio_chunk)
-
-                    # 时间戳/字幕数据：打印不处理
-                    elif code == 0 and data.get("sentence"):
-                        print(f"[{role}] 字幕数据: {data}")
-
-                    # 合成完成结束标志
-                    elif code == 20000000:
-                        if data.get("usage"):
-                            print(f"[{role}] 计费信息: {data['usage']}")
-                        break
-
-                    # 错误响应
-                    elif code > 0:
-                        print(f"❌ [{role}] 接口错误: {data}")
-                        break
-
-        # 5. 保存音频文件
-        if len(audio_data) > 0:
-            with open(save_path, "wb") as f:
-                f.write(audio_data)
-            os.chmod(save_path, 0o644)
-            print(f"✅ [{role}] 音色合成成功：{save_path}")
-            return True
-        else:
-            print(f"❌ [{role}] 未生成音频数据")
-            if os.path.exists(save_path):
-                os.remove(save_path)
-            return False
-
-    except Exception as e:
-        print(f"❌ [{role}] 调用失败：{str(e)[:300]}")
-        # 清理无效文件
-        if os.path.exists(save_path):
-            try:
-                os.remove(save_path)
-            except:
-                pass
-        return False
+    return False
 
 
 # ===================== 重构：语音生成+入队，不再直接播放 =====================
@@ -846,16 +761,31 @@ async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
         processing_count[0] -= 1
 
 
+def pick_random_scan_audio() -> Optional[str]:
+    """从扫码语录目录中随机挑选一个 mp3 文件"""
+    if not os.path.exists(SCAN_AUDIO_DIR):
+        return None
+    files = [f for f in os.listdir(SCAN_AUDIO_DIR) if f.lower().endswith(".mp3")]
+    if not files:
+        return None
+    return os.path.join(SCAN_AUDIO_DIR, random.choice(files))
+
 # ===================== 扫码语录循环协程 =====================
 async def scan_audio_loop():
-    """每30秒播放扫码语录，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
+    """每30秒随机播放扫码语录目录下的MP3，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
     global tts_active, scan_paused
 
-    if not os.path.exists(SCAN_AUDIO_PATH):
-        print(f"❌ 找不到扫码语录：{SCAN_AUDIO_PATH}")
+    if not os.path.exists(SCAN_AUDIO_DIR):
+        print(f"❌ 找不到扫码语录目录：{SCAN_AUDIO_DIR}")
         return
 
-    print(f"🔊 扫码语录循环已启动（间隔{SCAN_INTERVAL}秒，空格暂停，Z不影响）")
+    # 预扫描一次目录，确认有文件
+    sample = pick_random_scan_audio()
+    if not sample:
+        print(f"⚠️ 扫码语录目录中没有 .mp3 文件：{SCAN_AUDIO_DIR}")
+        return
+
+    print(f"🔊 扫码语录随机播放已启动（目录：{SCAN_AUDIO_DIR}，间隔{SCAN_INTERVAL}秒）")
     clock = pygame.time.Clock()
     accumulated = 0
     interval_ms = SCAN_INTERVAL * 1000
@@ -870,16 +800,21 @@ async def scan_audio_loop():
             # 到达触发时间点
             if accumulated >= interval_ms:
                 if tts_active:
-                    print("⏸️ 扫码语录触发时TTS正在播放，本次顺延")
-                    accumulated = interval_ms  # 保持满格，等TTS结束后再触发
+                    # TTS正在播放，本次顺延
+                    accumulated = interval_ms
                 else:
-                    try:
-                        pygame.mixer.music.load(SCAN_AUDIO_PATH)
-                        pygame.mixer.music.play()
-                        print("🔊 扫码语录播放中...")
-                        accumulated = 0
-                    except Exception as e:
-                        print(f"❌ 扫码语录播放异常：{e}")
+                    audio_file = pick_random_scan_audio()
+                    if audio_file:
+                        try:
+                            pygame.mixer.music.load(audio_file)
+                            pygame.mixer.music.play()
+                            print(f"🔊 扫码语录播放中：{os.path.basename(audio_file)}")
+                            accumulated = 0
+                        except Exception as e:
+                            print(f"❌ 扫码语录播放异常：{e}")
+                            accumulated = 0
+                    else:
+                        print("⚠️ 未找到可用的扫码语录文件")
                         accumulated = 0
 
             # 如果正在播放扫码语录，实时检测TTS插入
