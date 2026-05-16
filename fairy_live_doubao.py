@@ -54,9 +54,9 @@ QWEN_CONFIG = {
 }
 
 # 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月14日直播\场次7639367731422923520\进直播间.txt"
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640119862865431336\进直播间.txt"
 
 # ===================== 扫码语录配置 =====================
 SCAN_AUDIO_PATH = r"E:\liveTools\Fairy\语录\扫码语录.mp3"
@@ -114,7 +114,7 @@ FIXED_REPLY_CONFIG = {
             "检测到主人正在打牢号，主人，您已经放弃了思考吗？",
             "检测到主人正在坐牢，如果您想小憩，请允许我挑选曲目。我会用轻音乐和白噪声，编制您的梦。",
             "检测到主人正在打牢号，主人，您还好吗？",
-            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集",
+            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集。",
             "您又翻车了，是否需要我为您播放《从头再来》？不，我更建议先充个电冷静一下。",
             "检测到主人正在打牢号，当前伤害数据：不如邦布一锤子。建议放弃，或者继续折磨自己。",
             "正在分析牢号数据……结论：您的队伍配置没问题，有问题的只是运气。建议洗脸。",
@@ -870,7 +870,7 @@ async def scan_audio_loop():
             # 到达触发时间点
             if accumulated >= interval_ms:
                 if tts_active:
-                    print("⏸️ 扫码语录触发时TTS正在播放，本次顺延")
+                    # print("⏸️ 扫码语录触发时TTS正在播放，本次顺延")
                     accumulated = interval_ms  # 保持满格，等TTS结束后再触发
                 else:
                     try:
