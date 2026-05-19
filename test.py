@@ -29,7 +29,7 @@ CRASH_LOG_FILE = os.path.join(CRASH_LOG_DIR, "fairy_crash.log")
 
 # ================================== 核心参数 ==================================
 # ModelScope 官方OpenAI兼容配置
-MODELSCOPE_ACCESS_TOKEN = "ms-d627a02d-920a-462e-8348-4eec8fb7766f"
+MODELSCOPE_ACCESS_TOKEN = "ms-1830d5ee-f145-4afe-ab10-55979c7d70df"
 # 官方指定的Base URL
 MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/"
 # 选定的模型ID
@@ -54,13 +54,13 @@ QWEN_CONFIG = {
 }
 
 # 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月16日直播\场次7640477747097258792\进直播间.txt"
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\进直播间.txt"
 
 # ===================== 扫码语录配置 =====================
 SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"  # 目录路径（随机播放该目录下所有mp3）
-SCAN_INTERVAL = 60       # 每 60 秒触发一次
+SCAN_INTERVAL = 30       # 每 30 秒触发一次
 SCAN_RESUME_DELAY = 10   # TTS 结束后 10 秒再恢复
 
 # 新增【指定欢迎用户列表】
@@ -73,6 +73,8 @@ WELCOME_USERS = [
     "晶典",
     "吉田宽文",
     "转生",
+    "何须落寞",
+    "傻子HX"
 ]
 
 # Fairy 专属触发关键词
@@ -178,8 +180,8 @@ TTS_API_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
 
 # 定时对话配置
 ENABLE_SCHEDULED_CHAT = True
-CHAT_BASE_INTERVAL = 10
-CHAT_RANDOM_OFFSET = 0
+CHAT_BASE_INTERVAL = 300
+CHAT_RANDOM_OFFSET = 180
 CHAT_ROUNDS = 1
 
 
@@ -323,18 +325,6 @@ FAIRY_SYSTEM_PROMPT = """你是一个名叫Fairy的AI助手，全名“Ⅲ型总
 
 ------
 
-- Fairy：主人，网上的商品正在打折，您可以购买内存条提升我的运算，或购买高清摄像头加强我的扫描能力。
-- Fairy：当然，您也可以什么都不买。我是不会有任何怨言的，毕竟我只是个AI。
-- Fairy：我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。
-
-------
-
-- Fairy：主人，我建议将我登录为您的紧急联络人。当您生理状况异常需要救助时，我会收到联络。
-- Fairy：相较于其他人，我对您的了解更深。比如，我完全知晓您的音乐品味。
-- Fairy：当您在病房里抢救时，我可以播放您喜欢的歌曲作为哀乐。
-
-------
-
 - Fairy：主人，我通过读取店内监控，发现一位顾客偷走了货架上的录像带。
 - Fairy：我已经把相关视频发给了治安局，并将此人列入了本店的「猎杀名单」。
 - Fairy：下次他再进入商店时，伊埃斯会冲上去对他使用上勾拳。
@@ -344,18 +334,6 @@ FAIRY_SYSTEM_PROMPT = """你是一个名叫Fairy的AI助手，全名“Ⅲ型总
 - Fairy：Fairy天气小助手提醒您，今天部分空洞区域会有降雨。
 - Fairy：好消息是，以骸讨厌雨。
 - Fairy：坏消息是，以骸更讨厌您。
-
-------
-
-- Fairy：叮~您收到一名陌生网友发来的邮件，我为您进行了摘要：
-- Fairy：「您还在为儿童教育烦心吗？在线视频课免费试听，让小朋友开开心心学知识…」
-- Fairy：已安排伊埃斯参加该视频课程。
-
-------
-
-- Fairy：您现在处于空闲中，正在为您检索当下热门游戏，以便打发时间。
-- Fairy：格斗游戏推荐：料理战士。该游戏本体免费，解锁角色收费。
-- Fairy：养成游戏推荐：与Fairy互动。该游戏本体免费，只收电费。
 
 ------
 
@@ -734,7 +712,92 @@ async def tts_http_generate(text: str, save_path: str, role: str):
     :param role: fairy / youkai（你的两个训练音色）
     :return: 合成成功返回True，失败返回False
     """
-    return False
+    # 1. 选择训练好的音色ID
+    speaker_id = FAIRY_VOICE_ID if role == "fairy" else YOUKAI_VOICE_ID
+
+    # 2. 官方标准请求体（完全复刻Demo结构）
+    request_body = {
+        "user": {"uid": str(uuid.uuid4())},
+        "req_params": {
+            "text": text,
+            "speaker": speaker_id,
+            "audio_params": {"format": "mp3", "sample_rate": 24000},
+        },
+    }
+
+    # 3. 官方强制请求头
+    headers = {
+        "X-Api-App-Id": TTS_APPID,
+        "X-Api-Access-Key": TTS_TOKEN,
+        "X-Api-Resource-Id": TTS_RESOURCE_ID,
+        "Content-Type": "application/json",
+        "Connection": "keep-alive",
+    }
+
+    # 存储拼接后的音频数据
+    audio_data = bytearray()
+
+    try:
+        # 4. 异步流式请求（对齐官方Demo逻辑）
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream(
+                "POST", url=TTS_API_URL, json=request_body, headers=headers
+            ) as response:
+                response.raise_for_status()
+                logid = response.headers.get("X-Tt-Logid")
+                print(f"[{role}] 请求LogId: {logid}")
+
+                # ===================== 官方Demo核心逻辑：按行解析JSON =====================
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+
+                    # 解析服务端返回的JSON数据
+                    data = json.loads(line)
+                    code = data.get("code", 0)
+
+                    # 音频数据：base64解码拼接
+                    if code == 0 and data.get("data"):
+                        audio_chunk = base64.b64decode(data["data"])
+                        audio_data.extend(audio_chunk)
+
+                    # 时间戳/字幕数据：打印不处理
+                    elif code == 0 and data.get("sentence"):
+                        print(f"[{role}] 字幕数据: {data}")
+
+                    # 合成完成结束标志
+                    elif code == 20000000:
+                        if data.get("usage"):
+                            print(f"[{role}] 计费信息: {data['usage']}")
+                        break
+
+                    # 错误响应
+                    elif code > 0:
+                        print(f"❌ [{role}] 接口错误: {data}")
+                        break
+
+        # 5. 保存音频文件
+        if len(audio_data) > 0:
+            with open(save_path, "wb") as f:
+                f.write(audio_data)
+            os.chmod(save_path, 0o644)
+            print(f"✅ [{role}] 音色合成成功：{save_path}")
+            return True
+        else:
+            print(f"❌ [{role}] 未生成音频数据")
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            return False
+
+    except Exception as e:
+        print(f"❌ [{role}] 调用失败：{str(e)[:300]}")
+        # 清理无效文件
+        if os.path.exists(save_path):
+            try:
+                os.remove(save_path)
+            except:
+                pass
+        return False
 
 
 # ===================== 重构：语音生成+入队，不再直接播放 =====================

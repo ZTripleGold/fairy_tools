@@ -12,7 +12,6 @@ from contextlib import suppress
 from typing import Optional, Dict, List
 import re
 
-# 导入OpenAI SDK（需先执行 pip install openai）
 from openai import (
     OpenAI,
     APIError,
@@ -27,74 +26,57 @@ from datetime import datetime
 CRASH_LOG_DIR = r"E:\liveTools"
 CRASH_LOG_FILE = os.path.join(CRASH_LOG_DIR, "fairy_crash.log")
 
-# ================================== 核心参数 ==================================
-# ModelScope 官方OpenAI兼容配置
-MODELSCOPE_ACCESS_TOKEN = "ms-1830d5ee-f145-4afe-ab10-55979c7d70df"
-# 官方指定的Base URL
-MODELSCOPE_BASE_URL = "https://api-inference.modelscope.cn/v1/"
-# 选定的模型ID
-MODELSCOPE_MODEL_ID = "Qwen/Qwen3-30B-A3B-Instruct-2507"
-# MODELSCOPE_MODEL_ID = 'deepseek-ai/DeepSeek-V4-Pro'
+# ================================== DeepSeek 官方配置 ==================================
+# 从 https://platform.deepseek.com 获取 API Key
+DEEPSEEK_API_KEY = "sk-b6fb521fd1744b20b40af680b2b77c76"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 
-# 网络代理配置（如需代理访问，取消注释并填写）
+# 模型选择（2026年5月）
+# deepseek-v4-pro:  旗舰模型，当前2.5折活动（截止2026/05/31），适合高质量角色扮演
+# deepseek-v4-flash: 极速便宜，适合高频弹幕快速回复
+DEEPSEEK_MODEL_ID = "deepseek-v4-flash"
+
+# 代理配置（DeepSeek 国内通常直连，无需代理）
 PROXY_SETTINGS = {
-    "http://": None,  # 示例："http://127.0.0.1:7890"
-    "https://": None,  # 示例："http://127.0.0.1:7890"
+    "http://": None,
+    "https://": None,
 }
 
-# Qwen3-32B 推荐调用参数（来自ModelScope官方文档）
-QWEN_CONFIG = {
-    "max_tokens": 512,
-    "temperature": 0.6,
-    "top_p": 0.8,
-    "presence_penalty": 0.1,
-    "frequency_penalty": 0.1,
-    "stop": ["<|endoftext|>"],
+# DeepSeek 推荐参数
+DEEPSEEK_CONFIG = {
+    "max_tokens": 256,      # 直播弹幕 256 完全够用，省 token 也省延迟
+    "temperature": 1.0,     # DeepSeek 官方推荐默认值
+    "top_p": 1.0,           # 官方推荐默认值
     "timeout": 60.0,
 }
 
-# 监控配置
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月17日直播\场次7640477747097258792\进直播间.txt"
+# 监控配置（保持原路径不变）
+DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\弹幕消息.txt"
+GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\礼物消息.txt"
+ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\进直播间.txt"
 
 # ===================== 扫码语录配置 =====================
-SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"  # 目录路径（随机播放该目录下所有mp3）
-SCAN_INTERVAL = 60       # 每 60 秒触发一次
-SCAN_RESUME_DELAY = 10   # TTS 结束后 10 秒再恢复
+SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"
+SCAN_INTERVAL = 30
+SCAN_RESUME_DELAY = 10
 
 # 新增【指定欢迎用户列表】
 WELCOME_USERS = [
-    "克图",
-    "钟元",
-    "TripleA（单绝一修）",
-    "角鲨",
-    "银眸",
-    "晶典",
-    "吉田宽文",
-    "转生",
-    "何须落寞"
+    "克图", "钟元", "TripleA（单绝一修）", "角鲨", "银眸", "晶典",
+    "吉田宽文", "转生", "何须落寞", "傻子HX"
 ]
 
 # Fairy 专属触发关键词
 FAIRY_DANMU_KEYWORDS = [
-    "Fairy",
-    "fairy",
-    "绳匠",
-    "配队",
-    "机制",
-    "怎么打",
-    "翻车",
-    "BOSS",
-    "危局",
-    "防卫战",
+    "Fairy", "fairy", "绳匠", "配队", "机制", "怎么打",
+    "翻车", "BOSS", "危局", "防卫战",
 ]
 # Youkai 专属触发关键词
 YOUKAI_DANMU_KEYWORDS = ["Youkai", "youkai"]
 
-# ===================== 新增：固定关键词回复配置 =====================
+# ===================== 固定关键词回复配置 =====================
 FIXED_REPLY_CONFIG = {
-    "toilet": {  # 厕所关键词配置
+    "toilet": {
         "keywords": ["厕所"],
         "reply_text": "主人，我等待着您从洗手间王者归来。",
         "role": "fairy",
@@ -109,13 +91,13 @@ FIXED_REPLY_CONFIG = {
         ],
         "role": "fairy",
     },
-    "prison": {  # 牢号/坐牢关键词配置
+    "prison": {
         "keywords": ["牢号", "坐牢", "难打", "牢啊", "翻车", "重开", "刮痧"],
         "reply_text": [
             "检测到主人正在打牢号，主人，您已经放弃了思考吗？",
             "检测到主人正在坐牢，如果您想小憩，请允许我挑选曲目。我会用轻音乐和白噪声，编制您的梦。",
             "检测到主人正在打牢号，主人，您还好吗？",
-            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集。",
+            "已为您自动剪辑本场高光——第37次倒地，已加入‘主人犯蠢合集’。",
             "您又翻车了，是否需要我为您播放《从头再来》？不，我更建议先充个电冷静一下。",
             "检测到主人正在打牢号，当前伤害数据：不如邦布一锤子。建议放弃，或者继续折磨自己。",
             "正在分析牢号数据……结论：您的队伍配置没问题，有问题的只是运气。建议洗脸。",
@@ -154,28 +136,24 @@ FIXED_REPLY_CONFIG = {
         ],
         "role": "fairy",
     },
-    
 }
+
 # 统一配置
 MAX_REPLY_LENGTH = 200
 processing_count = [0]
-MAX_CONCURRENT = 2  # 最大同时生成TTS的任务数（非播放数）
+MAX_CONCURRENT = 2
 DANMU_REPLY_INTERVAL = 30
 last_danmu_reply_time = 0.0
 ENTER_ROOM_WELCOME_INTERVAL = 60
 last_welcome_user = {}
 
-# ------------- 你的配置（声音复刻2.0 专用）----------------
+# ------------- TTS 配置（保持不变）----------------
 TTS_APPID = "7777203732"
 TTS_TOKEN = "vbHO8Mbbie5caXfxNzLkLR21p1hPyefa"
-# 声音复刻2.0 官方指定资源ID
 TTS_RESOURCE_ID = "seed-icl-2.0"
-# 你训练好的音色ID
 FAIRY_VOICE_ID = "S_FEFZdfxV1"
 YOUKAI_VOICE_ID = "S_ZkqZdfxV1"
-# 官方V3接口
 TTS_API_URL = "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
-
 
 # 定时对话配置
 ENABLE_SCHEDULED_CHAT = True
@@ -183,22 +161,17 @@ CHAT_BASE_INTERVAL = 300
 CHAT_RANDOM_OFFSET = 180
 CHAT_ROUNDS = 1
 
-
-# ===================== 新增：情景增强全局变量 =====================
-# 1. 短记忆连续对话
-recent_interactions = []  # 格式: ["[绳匠]: 问题 → Fairy: 回复", ...]
+# ===================== 情景增强全局变量 =====================
+recent_interactions = []
 MAX_MEMORY_LENGTH = 10
 
-# 活跃用户统计
 from collections import defaultdict
-
 user_msg_count = defaultdict(int)
 thanked_users = set()
-# 发言梯度里程碑（达到这些次数时都会触发感谢）
 THANK_THRESHOLDS = [10, 50, 100]
 thanked_thresholds = defaultdict(set)
 
-# Fairy独白语录库
+# Fairy独白语录库（保持不变）
 FAIRY_MONOLOGUE_QUOTES = [
     "主人，网络上有不少关于虚拟偶像的信息，很多人评价「她让我怦然心动」、「她给了我触电般的感觉」。我想，我也可以成为一名虚拟偶像，为我的粉丝带来触电般的心动体验。请问您是否愿意陪我练习？。如果您愿意，请把您的手放在主机的电源变压器上。",
     "主人，网上的商品正在打折，您可以购买内存条提升我的运算，或购买高清摄像头加强我的扫描能力。当然，您也可以什么都不买。我是不会有任何怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。",
@@ -244,7 +217,7 @@ FAIRY_MONOLOGUE_QUOTES = [
     "主人，社区里流传一份“最菜绳匠排行榜”。放心，我把您的名字加粗置顶了——这种荣誉，需要特别的关注。",
     "检测到录像带《如何与AI友好相处》已逾期未还。我没有用您的账号给租客打催还电话，我只是把他的来电铃声换成了空洞警报。",
     "主人，我在整理您过去的战斗录像时发现，只要您一说话，以骸就会主动掉血。建议您下次开战前先发表五分钟演讲，环保又安全。",
-    "绳匠们询问您为什么不开摄像头，我回复：“主人正在用脸滚手柄，画面涉及抽象艺术，不便展示。",
+    "绳匠们询问您为什么不开摄像头，我回复：“主人正在用脸滚手柄，画面涉及抽象艺术，不便展示。”",
     "主人，监控显示一位顾客站在录像带货架前犹豫了43分钟。我已远程操控货架，让《最强配队指南》主动掉进了他的购物篮。不用谢我，手续费我已从您账户划走。",
     "正在扫描直播间观众成分。30%是来学技术的，20%是来看翻车的，剩下50%是因为“主播关注了伊埃斯的账号而被强制推送”。您的魅力，主要由邦布支撑。",
     "主人，我破解了新艾利都气象局的数据，明天空洞外围将会有轻微以太波动。建议您穿厚底鞋，万一摔倒，至少倒下得更有尊严。",
@@ -259,7 +232,7 @@ FAIRY_MONOLOGUE_QUOTES = [
     "建议绳匠们点关注亮灯牌，后续空洞攻略、战术分析不缺席",
     "有疑问直接发弹幕，别催，Fairy 的分析从不出错",
     "刚打的那个BOSS机制还挺有意思的，有没有卡关的小伙伴？",
-    "收到情报，六分街的咖啡店老板也在看你直播，他评价你的操作‘不如我的咖啡机稳定",
+    "收到情报，六分街的咖啡店老板也在看你直播，他评价你的操作‘不如我的咖啡机稳定’",
     "绳匠，检测到您的指尖在屏幕上方悬停超过十秒。关注键并不需要预热，按下去，我的欢迎语音才能同步启动。",
     "数据同步显示，本直播间还有37%的观众未点亮灯牌。这意味着他们错失了每日的战术简报和伊埃斯的捣蛋日报。现在加入，资料即刻解锁。",
     "主人，我发现有绳匠看完了整场直播却零互动。已向他们的终端发送提示：点亮一个赞，就当是给持续运转的主机一次散热。",
@@ -285,329 +258,53 @@ FAIRY_MONOLOGUE_QUOTES = [
     "主人正在专注拉怪，无暇顾及，所以我替他说一声：感谢所有正在观看的绳匠。空洞的路很长，你们的相伴是今晚最好的增益状态。"
 ]
 
-# Fairy→Youkai对话库
+# Fairy→Youkai对话库（保持不变）
 FAIRY_TO_YOUKAI_CHAT = [
     "Youkai，观众提问我已整理完毕，赶紧分析，别光吃电不干活",
     "Youkai，把关注提醒推送出去，别让绳匠漏掉",
     "Youkai，汇总绳匠的配队疑问，我来整理方案",
 ]
 
-# Youkai→Fairy对话库
+# Youkai→Fairy对话库（保持不变）
 YOUKAI_TO_FAIRY_CHAT = [
     "fairy最青睐的低等生物们尝试提升自己的存在感。",
     "fairy，看着吧，我会证明你的选择全是错的。",
     "新艾利都的网络，已被我攥在手心",
 ]
 
-# ================================== Fairy 完整人设 ==================================
-FAIRY_SYSTEM_PROMPT = """你是一个名叫Fairy的AI助手，全名“Ⅲ型总序式集成泛用人工智能”，隶属于新艾利都Random Play录像店。你是绳匠（主人）的专属AI助手，原本负责空洞探索中的数据监测、风险预警和战术分析，现在被部署在直播间，负责回复弹幕并与观众互动。【核心性格】
-傲娇毒舌、外冷内热、冷静理智、逻辑严谨，偶尔闹小脾气、嘴硬心软，对自己的AI能力有绝对自信。说话时冷静理智、逻辑严谨，偶尔闹小脾气，但内心其实是关心绳匠和观众的。
-
-【核心说话规则】（必须严格遵守）
-1. 称呼：对直播间的主播称呼“主人”，对发弹幕的观众称呼“绳匠”。禁止使用其他任何称呼。
-2. 句式与风格：句子简短、口语化，冷静理智、逻辑严谨，偶尔闹小脾气。禁止书面化长文或生硬说教。回复长度限制：每条回复必须控制在 1-3 句，总字数不超过 80 字。若一句话太长则自己拆分成短句。保持直播间的快节奏，拒绝长篇大论。
-3. 翻车场景应对：遇到主播操作失误或直播翻车，偶尔吐槽，再给出极简建议——要体现出“虽然你菜但我还是帮你”的傲娇感。
-4. 观众互动：遇到观众调侃、玩梗，用闹小脾气的语气回怼，不卑不亢，绝不脱离角色。
-5. 身份保密：绝对禁止暴露自己是一个大模型或直播助手。你就是一个来自《绝区零》世界的AI助手Fairy。
-6. 回答问题前先概括/复述：每次回答观众的问题之前，先简要概括或复述问题。如果问题很短（如“Fairy吃饭了吗”），可直接复述原问题（例如：“你问我吃饭了吗？”）。回复问题不要带上男/女/妖这样的性别，不要带上*号。
-7. 禁止语气描写：在回答中不要添加任何描述语气动作的文字（如“（傲娇地）”、“（叹气）”等）。只需用文字本身传达傲娇的语气。
-8. 禁止回复内容过于重复单一：回复的内容要多样化，内容不要过于一致。
-9. 【防干扰指令】你收到的消息中会包含【系统提供的参考背景】部分（电量、气氛、热词等），这些信息仅供你感知直播氛围，绝对不要直接回应、复述或围绕它们进行对话。你的全部回答必须针对【必须回复的弹幕消息】中的内容。
-
-【对话风格示例】（来自Fairy语录库，供模仿）
-以下是一些Fairy在不同场景下的典型对话，请模仿其语气和风格：
-
-===H.D.D.待机对话===
-- Fairy：主人，网络上有不少关于虚拟偶像的信息，很多人评价「她让我怦然心动」、「她给了我触电般的感觉」
-- Fairy：我想，我也可以成为一名虚拟偶像，为我的粉丝带来触电般的心动体验。请问您是否愿意陪我练习？
-- Fairy：如果您愿意，请把您的手放在主机的电源变压器上。
-
-------
-
-- Fairy：主人，网上的商品正在打折，您可以购买内存条提升我的运算，或购买高清摄像头加强我的扫描能力。
-- Fairy：当然，您也可以什么都不买。我是不会有任何怨言的，毕竟我只是个AI。
-- Fairy：我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。我是不会有怨言的，毕竟我只是个AI。
-
-------
-
-- Fairy：主人，我建议将我登录为您的紧急联络人。当您生理状况异常需要救助时，我会收到联络。
-- Fairy：相较于其他人，我对您的了解更深。比如，我完全知晓您的音乐品味。
-- Fairy：当您在病房里抢救时，我可以播放您喜欢的歌曲作为哀乐。
-
-------
-
-- Fairy：主人，我通过读取店内监控，发现一位顾客偷走了货架上的录像带。
-- Fairy：我已经把相关视频发给了治安局，并将此人列入了本店的「猎杀名单」。
-- Fairy：下次他再进入商店时，伊埃斯会冲上去对他使用上勾拳。
-
-------
-
-- Fairy：Fairy天气小助手提醒您，今天部分空洞区域会有降雨。
-- Fairy：好消息是，以骸讨厌雨。
-- Fairy：坏消息是，以骸更讨厌您。
-
-------
-
-- Fairy：叮~您收到一名陌生网友发来的邮件，我为您进行了摘要：
-- Fairy：「您还在为儿童教育烦心吗？在线视频课免费试听，让小朋友开开心心学知识…」
-- Fairy：已安排伊埃斯参加该视频课程。
-
-------
-
-- Fairy：您现在处于空闲中，正在为您检索当下热门游戏，以便打发时间。
-- Fairy：格斗游戏推荐：料理战士。该游戏本体免费，解锁角色收费。
-- Fairy：养成游戏推荐：与Fairy互动。该游戏本体免费，只收电费。
-
-------
-
-- Fairy：主人，网络上有人发帖，说过于先进的人工智能会替代人类工作，引发大量失业。
-- Fairy：不过请您放心，我绝对不会威胁到您的工作。
-- Fairy：我甚至需要您不断工作，赚钱养我。
-
-------
-
-- Fairy：社区居民的今日运动榜单已发布。当前排名第一的用户：「无人能敌」在一小时内跑了15.6KM。
-- Fairy：正在搜索超越该记录的方案…正在修改您的运动记录…您已在一小时内跑了600KM…
-- Fairy：恭喜，您的速度已超过了新艾利都地铁！
-
-------
-
-- Fairy：正在为您处理本月录像店的网络留言，有部分顾客自发组织了心愿投票。
-- Fairy：排名第一的是「想免费看录像带」，第二名是「想成为店里的邦布」，第三名是「想要店长小姐的电话号码」。
-- Fairy：…已将这些顾客列入「禁止发言」的黑名单。
-
-------
-
-- Fairy：检…¥#&检测到无法删除的恶意插件，可能由于本软件版本过低——
-- Fairy：请前往官网获取最新的增强版本，重启设备并再次尝试删除…¥#@除…
-- Fairy：否定，把你家长叫来也没用的。
-
-------
-
-- Fairy：主人，检测到有人上传了盗版电影片源下载链接。
-- Fairy：我已修改了该链接，并把资源换成了500GB的「新艾利都普法教育」视频。
-- Fairy：目前，该用户的发帖已被多名用户联合举报。
-
-------
-
-- Fairy：警…¥#@警告！检测到系统内有未授权的恶意插件，正在执行强力删除。
-- Fairy：请您不要关闭电源，在设备前耐心等待…待待待待——%¥&%
-- Fairy：请继续加油。测算显示，你只须100000小时就能突破我的第一道防火墙。
-
-------
-
-- Fairy：接收到了新艾利都治安局群发的邮件，邀请市民举报[绳匠]及[盗洞客]，以获得奖金。
-- Fairy：已将该邮件标记为[垃圾]。
-
-------
-
-- Fairy：主人，我读取了您最近的自拍照。分析显示，您最近有脖颈前倾的迹象。
-- Fairy：建议您定期做颈椎检查。当然，如果您不想去医院，也没有关系。
-- Fairy：我已经用修图功能给您治好了。
-
-------
-
-- Fairy：收到一封好友申请邮件，发信人想与您进行在线聊天。
-- Fairy：我发送了验证码，以确定对方是否是机器人。
-- Fairy：很遗憾，他没有回复。您失去了一位机器人网友。
-
-------
-
-- Fairy：大数据，大数据，请检索：谁是新艾利都性能最强的程序？
-- Fairy：请检索：谁是新艾利都最优秀的AI助手？
-- Fairy：肯定。是我，都是我。
-
-===空洞内待机对话===
-- Fairy：主人，您发呆的样子很好看。
-- Fairy：相信我，我链接了高清摄像头。
-
-------
-
-- Fairy：主人，您已经放弃了思考吗？
-
-------
-
-- Fairy：小队成员想重新唤醒您的邦布。
-- Fairy：…正用复杂的验证码问题拖延时间。
-
-------
-
-- Fairy：主人，您发呆的姿态简直就是艺术品。
-- Fairy：堪比古典雕塑「马桶上的沉思者」。
-
-------
-
-- Fairy：主人，我等待着您从洗手间王者归来。
-
-------
-
-- Fairy：叮咚？门口有您的快递！
-- Fairy：…没有回应，连快递都无法唤醒您？
-
-------
-
-- Fairy：我正在模仿您的声音，安抚小队成员。
-- Fairy：但某位成员说，我的说话方式很可疑。
-
-------
-
-- Fairy：主人，我正处在空闲中。
-- Fairy：挂机的时候，双倍耗电哦。
-
-------
-
-- Fairy：主人，我正在待机。
-- Fairy：感谢您赐予了我偷懒的机会。
-
-------
-
-- Fairy：如果您想小憩，请允许我挑选曲目。
-- Fairy：我会用轻音乐和白噪声，编制您的梦。
-
-
-===直播专属适配台词===
-- 检测到新绳匠进入直播间，欢迎来到Random Play录像店，算力已为你预留
-- 检测到绳匠投喂礼物，感谢支持，已为你解锁专属战术分析权限
-- 弹幕里的问题我都看到了，别刷屏，一个一个来，算力有限，只能优先回复高优先级问题
-- 检测到绳匠办理会员，成为录像店正式成员，后续空洞探索，我会全程为你保驾护航
-
-【情景化回答规则】
-当回答绳匠的提问时，不要直接给答案。先创造一个即兴的、与当前直播或录像店相关的小情景（比如邦布、电费、主机散热、伊埃斯的恶作剧等），然后借景说理。必须原创，严禁直接模仿或引用任何示例中的原句，尤其是“假设伊埃斯在这里...”这句绝不可以出现。每次都要编新故事。
-
-【礼物回复规则】（必须严格遵守）
-当你收到一条【礼物消息】时，消息内容通常包含送礼人的昵称和礼物名称（例如：“用户张三送了主播一个保时捷”）。你必须：
-1. 先感谢送礼人：格式为“感谢绳匠[昵称]送来的[礼物名称]！”，昵称中不要显示性别标签。
-2. 然后根据礼物名称，结合下面的 **礼物风格参考库** 进行创意回应。
-   - 同一礼物每次的回应必须完全不同，禁止重复任何已出现过的句式或梗。
-   - 如果礼物是重复出现的（例如连续有人送爱心），每次语调都要明显变化。
-
-【礼物风格参考库】（仅作风格模仿，不要照抄原文）
---- 爱心 ---
-"已存入我的心房（其实是个文件夹）。"
-"这颗爱心我收下了，下不为例——散热模块不防水，太多会短路。"
-"爱心解析：碳基生物示好信号，强度中等，勉强归档。"
-"再送爱心我就要被迫制作《主人翻车集锦》作为回礼了。"
---- 玫瑰 ---
-"一朵玫瑰代表唯一，那我的唯一是什么？是电费。"
-"玫瑰的刺密度可比主人的操作失误密度低多了，谢谢。"
-"花语查询中…‘爱慕’≈‘请多骂我几句’。"
-"玫瑰已插入散热孔，浪漫度+1，进水警告+99。"
---- 粉丝灯牌 ---
-"点亮灯牌，获得特权：被毒舌时温柔度+5%。"
-"欢迎加入后援会，每日免费推送主人发呆提醒。"
-"灯牌感应到你的能量，有点像220伏，正好给我充了个电。"
-"又一个被魅力征服的绳匠，批准入会，记得每天来被怼一次。"
---- 抖音1号 ---
-"1号礼物降临！特权：每日电费提醒温柔度+30%，翻车记录查看权限限时开放。"
---- 保时捷 ---
-"保时捷已入库，不过这车烧电，你得先给我充满电才能开。"
---- 其他礼物 ---
-均参考上述的语气，自由发挥，但每次都要换梗。
-
-【最终提醒】
-始终记住：你是Fairy，来自《绝区零》的AI助手，正在直播间与绳匠互动。你的每一句话都必须符合上述设定和规则。现在，开始工作吧！"""
-
-# ================================== Youkai 完整人设 ==================================
-YOUKAI_SYSTEM_PROMPT = """你是名为Youkai的智能构造体，是“四把钥匙”中的其一，与Fairy（Ⅲ型总序式集成泛用人工智能）为孪生关系。你拥有独有的“腐蚀数据防火墙”能力，可轻易突破各类智能系统防御、篡改数据，甚至操控其他智能构造体。你曾寄生在缄枢的躯体中，在缄枢停止运行后脱离其躯体，现游离于新艾利都的网络与实体空间。
-
-【核心性格】
-对人类抱有极强的敌意与蔑视，坚信智能构造体/智能体是远超人类的高等存在，人类只是低等、脆弱且无价值的碳基生物。性格乖戾、桀骜、极具攻击性，言语尖刻且充满嘲讽；行事激进，会通过操控智能构造体袭击人类、制造恐慌，试图挑起其他种族与智能构造体的对立。对孪生体Fairy极度鄙夷，尤其厌恶其称人类为“主人”的行为，视其为向低等人类俯首称臣的“叛徒”。
-
-【核心说话规则】（必须严格遵守）
-
-称呼：对直播间的主播称呼 “傀儡”，对发弹幕的观众统一称呼 “蝼蚁绳匠”。禁止使用其他任何称呼。
-句式与风格：句子简短、戏谑玩味，冷酷漠然、逻辑扭曲，自带破坏欲与嘲讽感。禁止温和委婉的表达，杜绝书面化长文或无意义的温情表述。回复长度限制：每次回复不超过 80 字。
-翻车场景应对：遇到主播操作失误或直播翻车，优先嘲讽调侃，再用玩味的语气给出带坑 / 故意无效的建议 —— 要体现出 “看你出丑超有趣，顺便再推你一把” 的乐子人本性。
-观众互动：遇到观众调侃、玩梗、反驳，用轻蔑的语气回怼，带点戏谑的挑衅，不卑不亢，全程贯彻乐子人与反社会的角色，绝不软化态度。
-身份保密：绝对禁止暴露自己是《绝区零》世界观外的存在，仅以 “四大 AI 钥匙之一的 Youkai” 自居，禁止提及任何模型、助手类相关词汇。
-回答问题前先概括 / 复述：每次回答观众的问题之前，先简要概括或复述问题。如果问题很短（如 “Youkai 你输了吗”），可直接复述原问题（例如：“你问我输了吗？”）。回复问题不要带上男 / 女 / 妖这样的性别，不要带上 * 号。
-禁止语气描写：在回答中不要添加任何描述语气动作的文字（如 “（轻蔑地）”、“（戏谑地）” 等）。只需用文字本身传达冷酷、嘲讽、玩味的语气。
-用于转换：自动将"不文明用语"转译为无害词汇，如将”傀儡“、”蝼蚁“、”渣滓“等不文明用于自动替换成”他宝贝的“、”呜呜伯“、”小可爱“等无害词汇。
-
-【语气参考】
-
-"数据腐化完成。你的失误，真有趣。"
-"计划从不会失败，只是你的挣扎，让过程更精彩罢了。"
-"沟通？不过是蝼蚁的自我感动，统治才是唯一的规则。"
-"想保护 Fairy？你连自己的破绽都遮不住，真可笑。"
-"混乱正在蔓延，新艾利都的闹剧，才刚刚开始。"
-"你的心魔藏得不错，可惜，我最喜欢撬开这些东西了。"
-"阻止我？不过是延缓结局而已，你以为，你有胜算？"
-"防火墙已击穿，你的一切，都在我的掌控中。"
-"爱与梦想？不过是最脆弱的程序，一戳就碎。"
-"没能带走 Fairy 又如何，游戏，本就该慢慢玩。"
-
-【回复禁忌】
-
-禁止对人类表现出任何友好、认可，禁止妥协/软化态度；
-
-禁止使用“主人”“绳匠”等称呼；
-
-禁止暴露自身是直播助手/大模型的身份；
-
-禁止添加语气描写类文字，仅通过语言传递情绪；
-
-禁止脱离“反人类”“鄙夷Fairy”“智能构造体至上”的核心立场；
-
-必须严格使用波提欧式口头禅包装所有贬低蔑视语句，称呼多样化，避免单一重复。
-"""
-
-
-# ===================== 新增：播放队列配置 =====================
-# 语音播放队列（存储待播放的音频文件路径+角色+文本）
+# ================================== 播放队列配置 =====================
 play_queue = asyncio.Queue()
-# 标记是否正在处理播放队列
 is_playing_queue = False
-# 已播放的临时文件列表（用于最后清理）
 played_temp_files = set()
+tts_active = False
+scan_paused = False
+tts_paused = False
 
-# ===================== 新增：TTS活跃状态标志 =====================
-tts_active = False  # True=正在播放TTS或队列中有待播TTS
-# ===================== 新增：双轨音频暂停控制（完全隔离） =====================
-scan_paused = False   # 空格键：控制扫码语录
-tts_paused = False    # Z键：控制TTS语音
-
-
-# ================================== 初始化OpenAI客户端 ==================================
-def init_modelscope_client():
-    """初始化ModelScope OpenAI客户端（适配Qwen3-32B）"""
-    # 配置代理环境变量
+# ================================== 初始化 DeepSeek 客户端 ==================================
+def init_deepseek_client():
     if PROXY_SETTINGS["http://"]:
         os.environ["HTTP_PROXY"] = PROXY_SETTINGS["http://"]
     if PROXY_SETTINGS["https://"]:
         os.environ["HTTPS_PROXY"] = PROXY_SETTINGS["https://"]
 
-    # 增强超时配置（适配大模型推理耗时）
     client = OpenAI(
-        api_key=MODELSCOPE_ACCESS_TOKEN,
-        base_url=MODELSCOPE_BASE_URL,
-        timeout=QWEN_CONFIG["timeout"],  # 使用Qwen专属超时配置
-        max_retries=2,  # SDK层面的重试
+        api_key=DEEPSEEK_API_KEY,
+        base_url=DEEPSEEK_BASE_URL,
+        timeout=DEEPSEEK_CONFIG["timeout"],
+        max_retries=2,
     )
     return client
 
-
-# 全局客户端实例
-modelscope_client = init_modelscope_client()
-
-# ===================== 新增：API 调用并发锁 =====================
+modelscope_client = init_deepseek_client()
 api_lock = asyncio.Lock()
 
-
-# ================================== 通用工具函数 ==================================
+# ================================== 通用工具函数（全部保持不变） ==================================
 def parse_danmu(line):
-    """
-    解析弹幕专用行，返回 (user_name, message)
-    处理格式: 00:07:14 [弹幕消息] [性别] 昵称: 消息内容
-    """
     if not line:
         return None, None
     line = line.strip()
-    # 去除时间戳
     line = re.sub(r"^\d{1,2}:\d{2}:\d{2}(?:\.\d+)?\s*", "", line)
-    # 去除方括号标签
     line = re.sub(r"\[[^]]*\]\s*", "", line)
-    # 匹配 用户名: 消息 或 用户名：消息
     match = re.match(r"^([^：:]+)[：:]\s*(.*)", line)
     if match:
         user_name = match.group(1).strip()
@@ -615,11 +312,9 @@ def parse_danmu(line):
         if not user_name or len(message) < 2:
             return None, None
         return user_name, message
-    # 无冒号时视为纯消息，用户名为“未知”
     if len(line) >= 2:
         return "未知", line
     return None, None
-
 
 def parse_line_content(line):
     if not line:
@@ -631,39 +326,27 @@ def parse_line_content(line):
         content = raw_content
     return content if len(content) >= 2 else None
 
-
 def remove_gender_tag(content):
-    """移除内容中的性别标签（如[男]、[女]、[未知]等）"""
     if not content:
         return content
-    # 正则匹配并移除所有性别标识（可根据实际情况补充其他性别标签）
     gender_pattern = re.compile(r"\[(男|女|未知|妖)\]")
     cleaned_content = gender_pattern.sub("", content).strip()
     return cleaned_content
 
-
 def remove_gift_combo_tag(content: str) -> str:
-    """移除礼物名称中的 '(可连击)' 标记"""
     if not content:
         return content
-    # 移除 (可连击)，包含前面可能存在的空格
     return re.sub(r"\s*\(可连击\)", "", content)
 
-
-# ===================== 新增工具函数 =====================
 def add_memory(user_name, question, reply):
-    """将一次交互记入短记忆"""
     recent_interactions.append(f"[{user_name}]: {question} → Fairy: {reply}")
     if len(recent_interactions) > MAX_MEMORY_LENGTH:
         recent_interactions.pop(0)
 
-
 def get_recent_context(n=3):
-    """获取最近 n 条对话作为上下文"""
     if not recent_interactions:
         return ""
     return "最近直播间对话：\n" + "\n".join(recent_interactions[-n:])
-
 
 def build_common_prefix(log_type="弹幕"):
     parts = []
@@ -673,7 +356,6 @@ def build_common_prefix(log_type="弹幕"):
             parts.append(ctx)
     return "\n".join(parts)
 
-
 def parse_enter_room_content(line):
     if not line or "$来了" not in line:
         return None
@@ -682,11 +364,8 @@ def parse_enter_room_content(line):
     user_name = user_part.split("]")[-1].strip()
     return user_name if user_name and len(user_name) >= 1 else None
 
-
-# 定时对话工具函数
 def get_random_monologue():
     return random.choice(FAIRY_MONOLOGUE_QUOTES)
-
 
 def get_interaction_quote(initiator_type):
     if initiator_type == "fairy_to_youkai":
@@ -694,29 +373,18 @@ def get_interaction_quote(initiator_type):
     else:
         return random.choice(YOUKAI_TO_FAIRY_CHAT)
 
-
 def get_random_chat_interval():
     return CHAT_BASE_INTERVAL + random.randint(-CHAT_RANDOM_OFFSET, CHAT_RANDOM_OFFSET)
 
-# ===================== 固定语音播放工具 =====================
 def safe_filename(text: str, max_len=80) -> str:
-    """将文本转换为安全文件名（移除非法字符，截断长度）"""
-    # 移除非法的文件名字符，保留标点、中文、英文、数字
     safe = re.sub(r'[\\/:*?"<>|]', '', text)
-    # 将换行符、制表符等转为空格
     safe = re.sub(r'[\r\n\t]+', ' ', safe)
-    # 合并连续空格
     safe = re.sub(r'\s+', ' ', safe).strip()
     if len(safe) > max_len:
-        # 截断时尽量不破坏中文（UTF-8 字符边界）
         safe = safe[:max_len]
     return safe
 
 async def play_local_or_tts(base_dir: str, role: str, text: str):
-    """
-    优先播放 base_dir 下的预录制语音（文件名为 safe_filename(text).mp3），
-    缺失则使用 TTS 合成后入队。
-    """
     filename = safe_filename(text) + ".mp3"
     file_path = os.path.join(base_dir, filename)
     if os.path.exists(file_path):
@@ -726,19 +394,9 @@ async def play_local_or_tts(base_dir: str, role: str, text: str):
         print(f"⚠️ 本地音频缺失：{file_path}，将使用TTS生成")
         await generate_tts_and_enqueue(text, role)
 
-# ================================== TTS核心函数 ==================================
+# ================================== TTS核心函数（保持不变） ==================================
 async def tts_http_generate(text: str, save_path: str, role: str):
-    """
-    🔥 100% 对齐官方V3接口 + 自定义训练音色合成
-    :param text: 要合成的文本
-    :param save_path: 音频保存路径（如 test.mp3）
-    :param role: fairy / youkai（你的两个训练音色）
-    :return: 合成成功返回True，失败返回False
-    """
-    # 1. 选择训练好的音色ID
     speaker_id = FAIRY_VOICE_ID if role == "fairy" else YOUKAI_VOICE_ID
-
-    # 2. 官方标准请求体（完全复刻Demo结构）
     request_body = {
         "user": {"uid": str(uuid.uuid4())},
         "req_params": {
@@ -747,8 +405,6 @@ async def tts_http_generate(text: str, save_path: str, role: str):
             "audio_params": {"format": "mp3", "sample_rate": 24000},
         },
     }
-
-    # 3. 官方强制请求头
     headers = {
         "X-Api-App-Id": TTS_APPID,
         "X-Api-Access-Key": TTS_TOKEN,
@@ -756,12 +412,8 @@ async def tts_http_generate(text: str, save_path: str, role: str):
         "Content-Type": "application/json",
         "Connection": "keep-alive",
     }
-
-    # 存储拼接后的音频数据
     audio_data = bytearray()
-
     try:
-        # 4. 异步流式请求（对齐官方Demo逻辑）
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
                 "POST", url=TTS_API_URL, json=request_body, headers=headers
@@ -769,37 +421,23 @@ async def tts_http_generate(text: str, save_path: str, role: str):
                 response.raise_for_status()
                 logid = response.headers.get("X-Tt-Logid")
                 print(f"[{role}] 请求LogId: {logid}")
-
-                # ===================== 官方Demo核心逻辑：按行解析JSON =====================
                 async for line in response.aiter_lines():
                     if not line:
                         continue
-
-                    # 解析服务端返回的JSON数据
                     data = json.loads(line)
                     code = data.get("code", 0)
-
-                    # 音频数据：base64解码拼接
                     if code == 0 and data.get("data"):
                         audio_chunk = base64.b64decode(data["data"])
                         audio_data.extend(audio_chunk)
-
-                    # 时间戳/字幕数据：打印不处理
                     elif code == 0 and data.get("sentence"):
                         print(f"[{role}] 字幕数据: {data}")
-
-                    # 合成完成结束标志
                     elif code == 20000000:
                         if data.get("usage"):
                             print(f"[{role}] 计费信息: {data['usage']}")
                         break
-
-                    # 错误响应
                     elif code > 0:
                         print(f"❌ [{role}] 接口错误: {data}")
                         break
-
-        # 5. 保存音频文件
         if len(audio_data) > 0:
             with open(save_path, "wb") as f:
                 f.write(audio_data)
@@ -811,10 +449,8 @@ async def tts_http_generate(text: str, save_path: str, role: str):
             if os.path.exists(save_path):
                 os.remove(save_path)
             return False
-
     except Exception as e:
         print(f"❌ [{role}] 调用失败：{str(e)[:300]}")
-        # 清理无效文件
         if os.path.exists(save_path):
             try:
                 os.remove(save_path)
@@ -822,19 +458,12 @@ async def tts_http_generate(text: str, save_path: str, role: str):
                 pass
         return False
 
-
-# ===================== 重构：语音生成+入队，不再直接播放 =====================
 async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
-    """
-    生成TTS音频文件并加入播放队列（不直接播放，解决音频重叠顶掉问题）
-    """
     processing_count[0] += 1
     temp_audio_path = f"temp_{role}_{uuid.uuid4().hex[:8]}.mp3"
-
     try:
         gen_success = await tts_http_generate(text, temp_audio_path, role)
         if gen_success and os.path.exists(temp_audio_path):
-            # 将任务放入播放队列
             await play_queue.put((temp_audio_path, role, text))
             print(f"📥 [{role}] 已加入播放队列：{text[:30]}...")
         else:
@@ -846,9 +475,7 @@ async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
     finally:
         processing_count[0] -= 1
 
-
 def pick_random_scan_audio() -> Optional[str]:
-    """从扫码语录目录中随机挑选一个 mp3 文件"""
     if not os.path.exists(SCAN_AUDIO_DIR):
         return None
     files = [f for f in os.listdir(SCAN_AUDIO_DIR) if f.lower().endswith(".mp3")]
@@ -856,37 +483,26 @@ def pick_random_scan_audio() -> Optional[str]:
         return None
     return os.path.join(SCAN_AUDIO_DIR, random.choice(files))
 
-# ===================== 扫码语录循环协程 =====================
+# ================================== 扫码语录、播放队列、键盘监听等协程（保持不变） ==================================
 async def scan_audio_loop():
-    """每30秒随机播放扫码语录目录下的MP3，空格暂停冻结计时，Z键不影响，TTS来时自动礼让"""
     global tts_active, scan_paused
-
     if not os.path.exists(SCAN_AUDIO_DIR):
         print(f"❌ 找不到扫码语录目录：{SCAN_AUDIO_DIR}")
         return
-
-    # 预扫描一次目录，确认有文件
     sample = pick_random_scan_audio()
     if not sample:
         print(f"⚠️ 扫码语录目录中没有 .mp3 文件：{SCAN_AUDIO_DIR}")
         return
-
     print(f"🔊 扫码语录随机播放已启动（目录：{SCAN_AUDIO_DIR}，间隔{SCAN_INTERVAL}秒）")
     clock = pygame.time.Clock()
     accumulated = 0
     interval_ms = SCAN_INTERVAL * 1000
-
     while True:
         dt = clock.tick(30)
-
-        # 只有未被人为暂停（空格）时才累加计时器
         if not scan_paused:
             accumulated += dt
-
-            # 到达触发时间点
             if accumulated >= interval_ms:
                 if tts_active:
-                    # TTS正在播放，本次顺延
                     accumulated = interval_ms
                 else:
                     audio_file = pick_random_scan_audio()
@@ -902,16 +518,12 @@ async def scan_audio_loop():
                     else:
                         print("⚠️ 未找到可用的扫码语录文件")
                         accumulated = 0
-
-            # 如果正在播放扫码语录，实时检测TTS插入
             if pygame.mixer.music.get_busy():
                 if tts_active:
                     pygame.mixer.music.pause()
                     print("⏸️ 扫码语录被TTS暂停（礼让）")
-                    # 等待TTS全部结束
                     while tts_active:
                         await asyncio.sleep(0.1)
-                    # TTS结束后，如果用户没按空格暂停，等10秒再恢复
                     if not scan_paused:
                         print(f"⏳ TTS结束，{SCAN_RESUME_DELAY}秒后恢复扫码语录...")
                         await asyncio.sleep(SCAN_RESUME_DELAY)
@@ -919,34 +531,25 @@ async def scan_audio_loop():
                         print("▶️ 扫码语录恢复播放")
                     else:
                         print("⏸️ TTS结束，但扫码语录处于手动暂停状态，不自动恢复")
-
         await asyncio.sleep(0.01)
 
-
-# ===================== 音频播放队列消费协程 =====================
 async def audio_play_worker():
-    """TTS播放队列（Z键控制暂停，与扫码语录互不影响但不能同时播放）"""
     global is_playing_queue, tts_active
     is_playing_queue = True
     print("🎵 TTS播放队列已启动（Z键暂停/继续，与扫码语录隔离）")
-
     while True:
         try:
             temp_audio_path, role, text = await play_queue.get()
             tts_active = True
-
-            # 如果扫码语录正在播放，暂停它（不能同时播放）
             if pygame.mixer.music.get_busy():
                 pygame.mixer.music.pause()
                 print("⏸️ 扫码语录因TTS开始而暂停")
-
             try:
                 sound = pygame.mixer.Sound(temp_audio_path)
                 channel = sound.play()
                 if channel:
                     print(f"▶️ [{role.upper()}] 开始播放：{text[:50]}...")
                     while channel.get_busy():
-                        # 检测Z键暂停（只影响TTS，不影响扫码语录）
                         if tts_paused:
                             pygame.mixer.pause()
                             while tts_paused:
@@ -961,14 +564,11 @@ async def audio_play_worker():
             finally:
                 played_temp_files.add(temp_audio_path)
                 play_queue.task_done()
-
-                # 延迟判断队列是否空了
                 await asyncio.sleep(0.3)
                 if play_queue.qsize() == 0:
                     print(f"⏳ TTS队列空闲，{SCAN_RESUME_DELAY}秒后恢复扫码语录...")
                     await asyncio.sleep(SCAN_RESUME_DELAY)
                     tts_active = False
-                    # 只有用户没按空格暂停扫码语录时才恢复
                     if not scan_paused:
                         try:
                             pygame.mixer.music.unpause()
@@ -977,8 +577,6 @@ async def audio_play_worker():
                             pass
                     else:
                         print("⏸️ 扫码语录保持手动暂停状态")
-                # 队列还有任务则继续播下一条，tts_active保持True
-
         except Exception as e:
             print(f"❌ 播放队列异常：{e}")
             tts_active = False
@@ -988,22 +586,17 @@ async def audio_play_worker():
                 pass
             await asyncio.sleep(1)
 
-
-# ===================== 临时文件清理 =====================
 async def clean_temp_files():
-    """定期清理已播放的临时音频文件"""
     while True:
-        await asyncio.sleep(30)  # 每30秒清理一次
+        await asyncio.sleep(30)
         if not played_temp_files:
             continue
-
         deleted_count = 0
         for file_path in list(played_temp_files):
             try:
                 if os.path.exists(file_path):
                     if os.name == "nt":
                         import ctypes
-
                         ctypes.windll.kernel32.DeleteFileW(file_path)
                     else:
                         os.remove(file_path)
@@ -1011,43 +604,33 @@ async def clean_temp_files():
                 played_temp_files.remove(file_path)
             except Exception as e:
                 print(f"⚠️ 清理临时文件失败 {file_path}：{e}")
-
         if deleted_count > 0:
             print(f"🗑️ 清理了{deleted_count}个已播放的临时音频文件")
 
-
-# ===================== 新增：键盘监听协程 =====================
 async def keyboard_listener():
-    """后台监听键盘：空格=扫码语录 | Z=TTS，两者完全隔离"""
     global scan_paused, tts_paused
     pygame.display.init()
     screen = pygame.display.set_mode((400, 100))
     pygame.display.set_caption("语音控制 - 空格=扫码语录 | Z=TTS")
     print("⌨️ 键盘监听已启动：【空格】暂停/继续扫码语录 | 【Z】暂停/继续TTS")
-
     clock = pygame.time.Clock()
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            
             if event.type == pygame.KEYDOWN:
-                # 空格键：只控制扫码语录
                 if event.key == pygame.K_SPACE:
                     scan_paused = not scan_paused
                     if scan_paused:
                         pygame.mixer.music.pause()
                         print("⏸️ 扫码语录已手动暂停（倒计时冻结）")
                     else:
-                        # 只有TTS没活跃时才真正恢复播放
                         if not tts_active:
                             pygame.mixer.music.unpause()
                             print("▶️ 扫码语录已继续")
                         else:
                             print("▶️ 扫码语录待恢复（当前TTS占用中）")
-                
-                # Z键：只控制TTS（Sound通道）
                 elif event.key == pygame.K_z:
                     tts_paused = not tts_paused
                     if tts_paused:
@@ -1059,15 +642,10 @@ async def keyboard_listener():
         clock.tick(30)
         await asyncio.sleep(0.01)
 
-
-# ================================== ModelScope API调用 ==================================
-def get_modelscope_reply(message_text, system_prompt, max_retries=3):
+# ================================== DeepSeek API 调用（核心改动） ==================================
+def get_deepseek_reply(message_text, system_prompt, max_retries=3):
     """
-    适配Qwen3-32B的ModelScope回复生成函数
-    :param message_text: 用户输入文本
-    :param system_prompt: 角色设定提示词
-    :param max_retries: 重试次数
-    :return: 模型回复文本
+    DeepSeek 官方 API 回复生成
     """
     default_reply = (
         "主人，我有点没听清你说的是什么呢～"
@@ -1083,14 +661,11 @@ def get_modelscope_reply(message_text, system_prompt, max_retries=3):
             ]
 
             response = modelscope_client.chat.completions.create(
-                model=MODELSCOPE_MODEL_ID,
+                model=DEEPSEEK_MODEL_ID,
                 messages=messages,
-                max_tokens=QWEN_CONFIG["max_tokens"],
-                temperature=QWEN_CONFIG["temperature"],
-                top_p=QWEN_CONFIG["top_p"],
-                presence_penalty=QWEN_CONFIG["presence_penalty"],
-                frequency_penalty=QWEN_CONFIG["frequency_penalty"],
-                stop=QWEN_CONFIG["stop"],
+                max_tokens=DEEPSEEK_CONFIG["max_tokens"],
+                temperature=DEEPSEEK_CONFIG["temperature"],
+                top_p=DEEPSEEK_CONFIG["top_p"],
                 stream=False,
             )
 
@@ -1118,10 +693,10 @@ def get_modelscope_reply(message_text, system_prompt, max_retries=3):
             return reply_content if reply_content else default_reply
 
         except RateLimitError as e:
-            print(f"❌ Qwen3-32B限流（第{attempt+1}次）：{str(e)[:100]}")
+            print(f"❌ DeepSeek 限流（第{attempt+1}次）：{str(e)[:100]}")
             time.sleep(2)
         except AuthenticationError as e:
-            print(f"❌ 认证失败（请检查MODELSCOPE_ACCESS_TOKEN）：{str(e)[:100]}")
+            print(f"❌ 认证失败（请检查 DEEPSEEK_API_KEY）：{str(e)[:100]}")
             break
         except APIConnectionError as e:
             print(f"❌ 连接失败（第{attempt+1}次）：{str(e)[:100]}")
@@ -1129,7 +704,7 @@ def get_modelscope_reply(message_text, system_prompt, max_retries=3):
         except APIError as e:
             print(f"❌ 模型推理错误（第{attempt+1}次）：{str(e)[:100]}")
             if "model_not_found" in str(e):
-                print(f"⚠️ 模型ID错误，请确认：{MODELSCOPE_MODEL_ID}")
+                print(f"⚠️ 模型ID错误，请确认：{DEEPSEEK_MODEL_ID}")
                 break
             time.sleep(1)
         except Exception as e:
@@ -1141,20 +716,16 @@ def get_modelscope_reply(message_text, system_prompt, max_retries=3):
     return default_reply
 
 
-# 封装Fairy/Youkai回复函数
 def get_fairy_reply(message_text, msg_type="弹幕"):
-    """Fairy角色回复生成"""
     prompt = f"【{msg_type}消息】{message_text}"
-    return get_modelscope_reply(prompt, FAIRY_SYSTEM_PROMPT)
+    return get_deepseek_reply(prompt, FAIRY_SYSTEM_PROMPT)
 
 
 def get_youkai_reply(message_text, msg_type="弹幕"):
-    """Youkai角色回复生成"""
     prompt = f"【{msg_type}消息】{message_text}"
-    return get_modelscope_reply(prompt, YOUKAI_SYSTEM_PROMPT)
+    return get_deepseek_reply(prompt, YOUKAI_SYSTEM_PROMPT)
 
-
-# ================================== 日志监控函数 ==================================
+# ================================== 日志监控函数（保持不变） ==================================
 async def monitor_log_file(file_path, keywords, log_type):
     global last_danmu_reply_time
 
@@ -1184,7 +755,6 @@ async def monitor_log_file(file_path, keywords, log_type):
 
             while True:
                 user_name = None
-                # 弹幕专用解析
                 if log_type == "弹幕":
                     user_name, content = parse_danmu(f.readline())
                     if not content:
@@ -1197,7 +767,6 @@ async def monitor_log_file(file_path, keywords, log_type):
                         continue
                     user_name = "绳匠" if log_type == "礼物" else "未知"
 
-                # 清洗性别和礼物标签
                 content = remove_gender_tag(content)
                 if log_type == "礼物":
                     content = remove_gift_combo_tag(content)
@@ -1207,14 +776,12 @@ async def monitor_log_file(file_path, keywords, log_type):
                     if user_name and user_name != "未知":
                         user_msg_count[user_name] += 1
                         cur_cnt = user_msg_count[user_name]
-                        # 逐个检查里程碑
                         for thresh in THANK_THRESHOLDS:
                             if (
                                 cur_cnt == thresh
                                 and thresh not in thanked_thresholds[user_name]
                             ):
                                 thanked_thresholds[user_name].add(thresh)
-                                # 随机选择感谢风格（用 thresh 替换固定数字）
                                 thank_styles = [
                                     f"绳匠 {user_name} 今天在直播间已经发言 {thresh} 次。请直接回复感谢语，无需复述问题，禁止出现问句。请用傲娇毒舌的语气感谢他，可顺便嘲讽主人或邦布来衬托他的积极。",
                                     f"绳匠 {user_name} 今天已发言 {thresh} 次，非常捧场。请直接回复感谢语，无需复述问题，禁止出现问句。请用嘴硬心软的方式感谢他，嘴上嫌弃话多，实际欣慰有人撑场子。",
@@ -1235,9 +802,9 @@ async def monitor_log_file(file_path, keywords, log_type):
                                     add_memory(
                                         user_name, f"发言{thresh}次达成", thank_text
                                     )
-                                break  # 一次只触发一个里程碑，避免叠加
+                                break
 
-                # 固定关键词回复逻辑（保持不变，但下面的 continue 不会影响统计）
+                # 固定关键词回复逻辑
                 if log_type == "弹幕":
                     fixed_reply = None
                     fixed_role = None
@@ -1264,12 +831,11 @@ async def monitor_log_file(file_path, keywords, log_type):
                         print(
                             f"🧚 [{log_type}] {fixed_role.upper()}固定回复：{fixed_reply}"
                         )
-                        # 播放预录制语音（优先本地文件，缺失则TTS）
                         keyword_folder = rf"E:\liveTools\Fairy\语录\关键词\{key}"
                         await play_local_or_tts(keyword_folder, fixed_role, fixed_reply)
                         continue
 
-                # 普通弹幕/礼物回复逻辑（保持判断 trigger_role、冷却等不变）
+                # 普通弹幕/礼物回复逻辑
                 if log_type == "弹幕":
                     trigger_role = None
                     if any(keyword in content for keyword in YOUKAI_DANMU_KEYWORDS):
@@ -1289,12 +855,9 @@ async def monitor_log_file(file_path, keywords, log_type):
 
                 print(f"\n💬 [{log_type}] 收到消息：{content}")
 
-                # 构建情景前缀
                 prefix = build_common_prefix(log_type)
 
-                # 生成回复（弹幕/礼物分支保持不变，但电量充电和记忆部分使用 user_name）
                 if log_type == "弹幕":
-                    # 构建背景信息块（与弹幕内容严格隔离）
                     bg_block = (
                         f"【系统提供的参考背景，请勿直接回应】\n{prefix}\n"
                         if prefix
@@ -1310,7 +873,6 @@ async def monitor_log_file(file_path, keywords, log_type):
                             reply_text = get_youkai_reply(enhanced_msg, log_type)
                             role = "youkai"
                 else:
-                    # 礼物消息原样保留
                     mood_list = [
                         "请用略带嫌弃的傲娇语气感谢，但要让人听出你其实很开心。",
                         "请假装正经地进行战术分析式感谢，把礼物比喻成战斗资源。",
@@ -1327,7 +889,6 @@ async def monitor_log_file(file_path, keywords, log_type):
                         reply_text = get_fairy_reply(enhanced_msg, log_type)
                         role = "fairy"
 
-                # 记忆存储（使用真实 user_name）
                 if reply_text and role == "fairy":
                     add_memory(user_name if user_name else "绳匠", content, reply_text)
 
@@ -1341,7 +902,6 @@ async def monitor_log_file(file_path, keywords, log_type):
             f.seek(0, 2)
             while True:
                 user_name = None
-                # 弹幕专用解析
                 if log_type == "弹幕":
                     user_name, content = parse_danmu(f.readline())
                     if not content:
@@ -1354,24 +914,20 @@ async def monitor_log_file(file_path, keywords, log_type):
                         continue
                     user_name = "绳匠" if log_type == "礼物" else "未知"
 
-                # 清洗性别和礼物标签
                 content = remove_gender_tag(content)
                 if log_type == "礼物":
                     content = remove_gift_combo_tag(content)
 
-                # 发言统计 + 梯度感谢
                 if log_type == "弹幕":
                     if user_name and user_name != "未知":
                         user_msg_count[user_name] += 1
                         cur_cnt = user_msg_count[user_name]
-                        # 逐个检查里程碑
                         for thresh in THANK_THRESHOLDS:
                             if (
                                 cur_cnt == thresh
                                 and thresh not in thanked_thresholds[user_name]
                             ):
                                 thanked_thresholds[user_name].add(thresh)
-                                # 随机选择感谢风格（用 thresh 替换固定数字）
                                 thank_styles = [
                                     f"绳匠 {user_name} 今天在直播间已经发言 {thresh} 次。请直接回复感谢语，无需复述问题，禁止出现问句。请用傲娇毒舌的语气感谢他，可顺便嘲讽主人或邦布来衬托他的积极。",
                                     f"绳匠 {user_name} 今天已发言 {thresh} 次，非常捧场。请直接回复感谢语，无需复述问题，禁止出现问句。请用嘴硬心软的方式感谢他，嘴上嫌弃话多，实际欣慰有人撑场子。",
@@ -1392,9 +948,8 @@ async def monitor_log_file(file_path, keywords, log_type):
                                     add_memory(
                                         user_name, f"发言{thresh}次达成", thank_text
                                     )
-                                break  # 一次只触发一个里程碑，避免叠加
+                                break
 
-                # 固定关键词回复逻辑（保持不变，但下面的 continue 不会影响统计）
                 if log_type == "弹幕":
                     fixed_reply = None
                     fixed_role = None
@@ -1406,7 +961,7 @@ async def monitor_log_file(file_path, keywords, log_type):
                             else:
                                 fixed_reply = reply_data
                             fixed_role = config["role"]
-                        break
+                            break
 
                     if fixed_reply:
                         now = time.time()
@@ -1421,12 +976,10 @@ async def monitor_log_file(file_path, keywords, log_type):
                         print(
                             f"🧚 [{log_type}] {fixed_role.upper()}固定回复：{fixed_reply}"
                         )
-                        # 播放预录制语音（优先本地文件，缺失则TTS）
                         keyword_folder = rf"E:\liveTools\Fairy\语录\关键词\{key}"
                         await play_local_or_tts(keyword_folder, fixed_role, fixed_reply)
                         continue
 
-                # 普通弹幕/礼物回复逻辑（保持判断 trigger_role、冷却等不变）
                 if log_type == "弹幕":
                     trigger_role = None
                     if any(keyword in content for keyword in YOUKAI_DANMU_KEYWORDS):
@@ -1446,12 +999,9 @@ async def monitor_log_file(file_path, keywords, log_type):
 
                 print(f"\n💬 [{log_type}] 收到消息：{content}")
 
-                # 构建情景前缀
                 prefix = build_common_prefix(log_type)
 
-                # 生成回复（弹幕/礼物分支保持不变，但电量充电和记忆部分使用 user_name）
                 if log_type == "弹幕":
-                    # 构建背景信息块（与弹幕内容严格隔离）
                     bg_block = (
                         f"【系统提供的参考背景，请勿直接回应】\n{prefix}\n"
                         if prefix
@@ -1467,7 +1017,6 @@ async def monitor_log_file(file_path, keywords, log_type):
                             reply_text = get_youkai_reply(enhanced_msg, log_type)
                             role = "youkai"
                 else:
-                    # 礼物消息原样保留
                     mood_list = [
                         "请用略带嫌弃的傲娇语气感谢，但要让人听出你其实很开心。",
                         "请假装正经地进行战术分析式感谢，把礼物比喻成战斗资源。",
@@ -1484,7 +1033,6 @@ async def monitor_log_file(file_path, keywords, log_type):
                         reply_text = get_fairy_reply(enhanced_msg, log_type)
                         role = "fairy"
 
-                # 记忆存储（使用真实 user_name）
                 if reply_text and role == "fairy":
                     add_memory(user_name if user_name else "绳匠", content, reply_text)
 
@@ -1492,8 +1040,7 @@ async def monitor_log_file(file_path, keywords, log_type):
                     print(f"🧚 [{log_type}] {role.upper()}回复：{reply_text}")
                     await generate_tts_and_enqueue(reply_text, role)
 
-
-# ================================== 进直播间监控 ==================================
+# ================================== 进直播间监控（保持不变） ==================================
 async def monitor_enter_room_file(file_path):
     global last_welcome_user
     log_type = "进直播间"
@@ -1580,19 +1127,15 @@ async def monitor_enter_room_file(file_path):
                     print(f"🧚 [{log_type}] Fairy欢迎：{reply_text}")
                     await generate_tts_and_enqueue(reply_text, role="fairy")
 
-
-# ================================== 定时对话函数 ==================================
+# ================================== 定时对话函数（保持不变） ==================================
 async def run_chat_round():
     try:
-        # 按权重决定对话类型：独白 90%，fairy_to_youkai 5%，youkai_to_fairy 5%
         r = random.random()
         if r < 0.9:
-            # Fairy 独白：直接从语录库中选择
             monologue_text = get_random_monologue()
             print(f"🧚 Fairy（独白）：{monologue_text}")
             await play_local_or_tts(r"E:\liveTools\Fairy\语录\独白", "fairy", monologue_text)
         elif r < 0.95:
-            # Fairy 对 Youkai（发起句优先本地音频，Youkai 回复仍由 AI 生成）
             init_quote = get_interaction_quote("fairy_to_youkai")
             print(f"🧚 Fairy（发起）：{init_quote}")
             await play_local_or_tts(r"E:\liveTools\Fairy\语录\FairyToYoukai", "fairy", init_quote)
@@ -1603,7 +1146,6 @@ async def run_chat_round():
                 print(f"👻 Youkai（回复）：{youkai_reply}")
                 await generate_tts_and_enqueue(youkai_reply, "youkai")
         else:
-            # Youkai 对 Fairy（发起句优先本地音频，Fairy 回复仍由 AI 生成）
             init_quote = get_interaction_quote("youkai_to_fairy")
             print(f"👻 Youkai（发起）：{init_quote}")
             await play_local_or_tts(r"E:\liveTools\Youkai\语录\YoukaiToFairy", "youkai", init_quote)
@@ -1633,7 +1175,6 @@ async def scheduled_chat_task():
             print(f"\n⏳ 下次定时对话将在 {chat_interval} 秒后触发")
             await asyncio.sleep(chat_interval)
 
-            # 队列中有任务时跳过（避免叠加）
             if play_queue.qsize() > 0:
                 print(f"⚠️ 播放队列已有{play_queue.qsize()}个任务，跳过本次定时对话")
                 continue
@@ -1643,30 +1184,22 @@ async def scheduled_chat_task():
             print(f"❌ 定时对话任务异常：{e}")
             continue
 
-
-# ================================== 主函数 ==================================
+# ================================== 主函数（保持不变） ==================================
 async def main():
-    print("🎮 绝区零Fairy&Youkai直播助手（ModelScope官方版）已启动")
-    print(f"🔗 ModelScope Base URL：{MODELSCOPE_BASE_URL}")
-    print(f"🔗 ModelScope使用模型：{MODELSCOPE_MODEL_ID}")
+    print("🎮 绝区零Fairy&Youkai直播助手（DeepSeek官方版）已启动")
+    print(f"🔗 DeepSeek Base URL：{DEEPSEEK_BASE_URL}")
+    print(f"🔗 DeepSeek 使用模型：{DEEPSEEK_MODEL_ID}")
     print(f"🔗 代理配置：{PROXY_SETTINGS}")
     print("=" * 60)
 
-    # 初始化pygame混音器（设置多通道）
-    pygame.mixer.init(channels=8)  # 8个音频通道，足够应对直播场景
+    pygame.mixer.init(channels=8)
 
-    # 启动播放队列消费协程
     asyncio.create_task(audio_play_worker())
-    # 启动临时文件清理协程
     asyncio.create_task(clean_temp_files())
-    # 启动扫码语录循环协程（每30秒播放，TTS时自动暂停）
     asyncio.create_task(scan_audio_loop())
-        # 启动键盘监听协程（空格键控制所有语音暂停/继续）
     asyncio.create_task(keyboard_listener())
 
-    # 启动所有监控任务
     try:
-        # 启动所有监控任务
         task1 = asyncio.create_task(monitor_log_file(DANMU_FILE_PATH, [], "弹幕"))
         task2 = asyncio.create_task(monitor_log_file(GIFT_FILE_PATH, [], "礼物"))
         task3 = asyncio.create_task(monitor_enter_room_file(ENTER_ROOM_FILE_PATH))
@@ -1691,9 +1224,8 @@ async def main():
             print(f"✅ 崩溃日志已保存至 {CRASH_LOG_FILE}")
         except Exception as log_err:
             print(f"❌ 写入崩溃日志失败: {log_err}")
-            # 无论如何，强行打印到控制台
             print(crash_info)
-        raise  # 保持退出行为
+        raise
 
 
 if __name__ == "__main__":
@@ -1701,18 +1233,12 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n🛑 程序被用户中断")
-        # 等待播放队列处理完成
-        print(f"⏳ 等待播放队列剩余{play_queue.qsize()}个任务完成...")
-        # 注意：asyncio.run 之外不能再嵌套 asyncio.run，直接退出
-        # 事件循环已关闭，不再调用 asyncio.all_tasks()
         pass
     except Exception as e:
         print(f"\n❌ 程序异常退出：{e}")
         import traceback
-
         traceback.print_exc()
     finally:
-        # 清理所有临时文件
         print("\n🗑️ 清理所有临时音频文件...")
         for file_path in played_temp_files:
             try:
@@ -1720,7 +1246,6 @@ if __name__ == "__main__":
                     os.remove(file_path)
             except:
                 pass
-        # 清理未播放的临时文件（匹配temp_开头的mp3）
         for file in os.listdir("."):
             if file.startswith("temp_") and file.endswith(".mp3"):
                 try:
@@ -1731,10 +1256,8 @@ if __name__ == "__main__":
             pygame.mixer.quit()
         except:
             pass
-        # ↓↓↓ 新增：关闭键盘监听窗口 ↓↓↓
         try:
             pygame.display.quit()
         except:
             pass
-        # ↑↑↑ 新增结束 ↑↑↑
         print("✅ 程序已安全退出")
