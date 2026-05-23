@@ -50,10 +50,11 @@ DEEPSEEK_CONFIG = {
     "timeout": 60.0,
 }
 
-# 监控配置（保持原路径不变）
-DANMU_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\弹幕消息.txt"
-GIFT_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\礼物消息.txt"
-ENTER_ROOM_FILE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月19日直播\场次7641219450402097955\进直播间.txt"
+BASE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月23日直播\场次7642707949552175906"
+
+DANMU_FILE_PATH      = os.path.join(BASE_PATH, "弹幕消息.txt")
+GIFT_FILE_PATH       = os.path.join(BASE_PATH, "礼物消息.txt")
+ENTER_ROOM_FILE_PATH = os.path.join(BASE_PATH, "进直播间.txt")
 
 # ===================== 扫码语录配置 =====================
 SCAN_AUDIO_DIR = r"E:\liveTools\Fairy\语录\扫码语录"
@@ -448,7 +449,8 @@ async def play_local_or_tts(base_dir: str, role: str, text: str):
     filename = safe_filename(text) + ".mp3"
     file_path = os.path.join(base_dir, filename)
     if os.path.exists(file_path):
-        await play_queue.put((file_path, role, text))
+        # 本地音频 is_temp=False，播放后不删除
+        await play_queue.put((file_path, role, text, False))
         print(f"📁 [{role}] 本地音频已加入播放队列：{text[:30]}...")
     else:
         print(f"⚠️ 本地音频缺失：{file_path}，将使用TTS生成")
@@ -524,7 +526,8 @@ async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
     try:
         gen_success = await tts_http_generate(text, temp_audio_path, role)
         if gen_success and os.path.exists(temp_audio_path):
-            await play_queue.put((temp_audio_path, role, text))
+            # TTS生成音频 is_temp=True，播放后删除
+            await play_queue.put((temp_audio_path, role, text, True))
             print(f"📥 [{role}] 已加入播放队列：{text[:30]}...")
         else:
             print(f"❌ [{role}] TTS生成失败，不加入队列：{text}")
@@ -599,7 +602,8 @@ async def audio_play_worker():
     print("🎵 TTS播放队列已启动（Z键暂停/继续，与扫码语录隔离）")
     while True:
         try:
-            temp_audio_path, role, text = await play_queue.get()
+            # ✅ 修复1：解包4个元素，增加 is_temp
+            temp_audio_path, role, text, is_temp = await play_queue.get()
             tts_active = True
             if pygame.mixer.music.get_busy():
                 pygame.mixer.music.pause()
@@ -622,7 +626,9 @@ async def audio_play_worker():
             except Exception as e:
                 print(f"❌ [{role}] 播放异常：{e}")
             finally:
-                played_temp_files.add(temp_audio_path)
+                # ✅ 修复2：仅当 is_temp=True 时才加入待删除集合
+                if is_temp:
+                    played_temp_files.add(temp_audio_path)
                 play_queue.task_done()
                 await asyncio.sleep(0.3)
                 if play_queue.qsize() == 0:
