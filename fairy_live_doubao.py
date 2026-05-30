@@ -50,7 +50,7 @@ DEEPSEEK_CONFIG = {
     "timeout": 60.0,
 }
 
-BASE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月23日直播\场次7642707949552175906"
+BASE_PATH = r"E:\liveTools\BarrageGrab\logs\弹幕日志\(58409059349)TripleG（崩绝双修）\2026年05月30日直播\场次7645301793257278242"
 
 DANMU_FILE_PATH      = os.path.join(BASE_PATH, "弹幕消息.txt")
 GIFT_FILE_PATH       = os.path.join(BASE_PATH, "礼物消息.txt")
@@ -339,7 +339,13 @@ is_playing_queue = False
 played_temp_files = set()
 tts_active = False
 scan_paused = False
-tts_paused = False
+# 定时对话计时器（用于Fairy发言后重置）
+last_chat_reset_time = time.time()
+
+def reset_chat_timer():
+    global last_chat_reset_time
+    last_chat_reset_time = time.time()
+    print("🔄 定时对话计时器已重置")
 
 # ================================== 初始化 DeepSeek 客户端 ==================================
 def init_deepseek_client():
@@ -446,10 +452,11 @@ def safe_filename(text: str, max_len=80) -> str:
     return safe
 
 async def play_local_or_tts(base_dir: str, role: str, text: str):
+    if role == "fairy":
+        reset_chat_timer()
     filename = safe_filename(text) + ".mp3"
     file_path = os.path.join(base_dir, filename)
     if os.path.exists(file_path):
-        # 本地音频 is_temp=False，播放后不删除
         await play_queue.put((file_path, role, text, False))
         print(f"📁 [{role}] 本地音频已加入播放队列：{text[:30]}...")
     else:
@@ -521,12 +528,13 @@ async def tts_http_generate(text: str, save_path: str, role: str):
         return False
 
 async def generate_tts_and_enqueue(text: str, role: str = "fairy"):
+    if role == "fairy":
+        reset_chat_timer()
     processing_count[0] += 1
     temp_audio_path = f"temp_{role}_{uuid.uuid4().hex[:8]}.mp3"
     try:
         gen_success = await tts_http_generate(text, temp_audio_path, role)
         if gen_success and os.path.exists(temp_audio_path):
-            # TTS生成音频 is_temp=True，播放后删除
             await play_queue.put((temp_audio_path, role, text, True))
             print(f"📥 [{role}] 已加入播放队列：{text[:30]}...")
         else:
@@ -548,7 +556,7 @@ def pick_random_scan_audio() -> Optional[str]:
 
 # ================================== 扫码语录、播放队列、键盘监听等协程（保持不变） ==================================
 async def scan_audio_loop():
-    global tts_active, scan_paused
+    global tts_active
     if not os.path.exists(SCAN_AUDIO_DIR):
         print(f"❌ 找不到扫码语录目录：{SCAN_AUDIO_DIR}")
         return
@@ -581,6 +589,7 @@ async def scan_audio_loop():
                     else:
                         print("⚠️ 未找到可用的扫码语录文件")
                         accumulated = 0
+            # 处理播放中的TTS礼让
             if pygame.mixer.music.get_busy():
                 if tts_active:
                     pygame.mixer.music.pause()
@@ -594,15 +603,27 @@ async def scan_audio_loop():
                         print("▶️ 扫码语录恢复播放")
                     else:
                         print("⏸️ TTS结束，但扫码语录处于手动暂停状态，不自动恢复")
+        else:
+            # scan_paused=True：暂停当前扫码语录，等待恢复
+            if pygame.mixer.music.get_busy():
+                pygame.mixer.music.pause()
+                print("⏸️ 扫码语录被手动暂停")
+            while scan_paused:
+                await asyncio.sleep(0.1)
+            # 解除暂停后，如果TTS没占用，恢复扫码语录
+            if not tts_active:
+                pygame.mixer.music.unpause()
+                print("▶️ 扫码语录已继续")
+            else:
+                print("▶️ 扫码语录待恢复（当前TTS占用中）")
         await asyncio.sleep(0.01)
 
 async def audio_play_worker():
     global is_playing_queue, tts_active
     is_playing_queue = True
-    print("🎵 TTS播放队列已启动（Z键暂停/继续，与扫码语录隔离）")
+    print("🎵 TTS播放队列已启动（空格键暂停/继续）")
     while True:
         try:
-            # ✅ 修复1：解包4个元素，增加 is_temp
             temp_audio_path, role, text, is_temp = await play_queue.get()
             tts_active = True
             if pygame.mixer.music.get_busy():
@@ -613,10 +634,12 @@ async def audio_play_worker():
                 channel = sound.play()
                 if channel:
                     print(f"▶️ [{role.upper()}] 开始播放：{text[:50]}...")
-                    while channel.get_busy():
-                        if tts_paused:
-                            pygame.mixer.pause()
-                            while tts_paused:
+                    # 如果当前处于全局暂停，立即把这段TTS也停住
+                    if scan_paused:
+                        pygame.mixer.pause()
+                    while channel.get_busy() or scan_paused:
+                        if scan_paused:
+                            while scan_paused:
                                 await asyncio.sleep(0.1)
                             pygame.mixer.unpause()
                         await asyncio.sleep(0.1)
@@ -626,7 +649,6 @@ async def audio_play_worker():
             except Exception as e:
                 print(f"❌ [{role}] 播放异常：{e}")
             finally:
-                # ✅ 修复2：仅当 is_temp=True 时才加入待删除集合
                 if is_temp:
                     played_temp_files.add(temp_audio_path)
                 play_queue.task_done()
@@ -642,7 +664,7 @@ async def audio_play_worker():
                         except Exception:
                             pass
                     else:
-                        print("⏸️ 扫码语录保持手动暂停状态")
+                        print("⏸️ 扫码语录保持暂停状态")
         except Exception as e:
             print(f"❌ 播放队列异常：{e}")
             tts_active = False
@@ -674,11 +696,11 @@ async def clean_temp_files():
             print(f"🗑️ 清理了{deleted_count}个已播放的临时音频文件")
 
 async def keyboard_listener():
-    global scan_paused, tts_paused
+    global scan_paused
     pygame.display.init()
     screen = pygame.display.set_mode((400, 100))
-    pygame.display.set_caption("语音控制 - 空格=扫码语录 | Z=TTS")
-    print("⌨️ 键盘监听已启动：【空格】暂停/继续扫码语录 | 【Z】暂停/继续TTS")
+    pygame.display.set_caption("语音控制 - 空格=暂停/继续所有音频")
+    print("⌨️ 键盘监听已启动：【空格】暂停/继续所有音频")
     clock = pygame.time.Clock()
     running = True
     while running:
@@ -690,21 +712,13 @@ async def keyboard_listener():
                     scan_paused = not scan_paused
                     if scan_paused:
                         pygame.mixer.music.pause()
-                        print("⏸️ 扫码语录已手动暂停（倒计时冻结）")
-                    else:
-                        if not tts_active:
-                            pygame.mixer.music.unpause()
-                            print("▶️ 扫码语录已继续")
-                        else:
-                            print("▶️ 扫码语录待恢复（当前TTS占用中）")
-                elif event.key == pygame.K_z:
-                    tts_paused = not tts_paused
-                    if tts_paused:
                         pygame.mixer.pause()
-                        print("⏸️ TTS已手动暂停")
+                        print("⏸️ 所有音频已手动暂停（倒计时冻结）")
                     else:
                         pygame.mixer.unpause()
-                        print("▶️ TTS已继续")
+                        if not tts_active:
+                            pygame.mixer.music.unpause()
+                        print("▶️ 所有音频已继续")
         clock.tick(30)
         await asyncio.sleep(0.01)
 
@@ -1226,26 +1240,37 @@ async def run_chat_round():
 
 
 async def scheduled_chat_task():
+    global last_chat_reset_time
     if not ENABLE_SCHEDULED_CHAT:
         print("⏸️ 定时对话已禁用")
         return
 
-    print(
-        f"✅ 定时对话启动（基础间隔{CHAT_BASE_INTERVAL}秒，随机偏移±{CHAT_RANDOM_OFFSET}秒）"
-    )
+    print(f"✅ 定时对话启动（基础间隔{CHAT_BASE_INTERVAL}秒，随机偏移±{CHAT_RANDOM_OFFSET}秒）")
     print(f"📊 对话概率分配：Fairy独白 90% | Fairy→Youkai 5% | Youkai→Fairy 5%")
 
     while True:
         try:
             chat_interval = max(60, get_random_chat_interval())
             print(f"\n⏳ 下次定时对话将在 {chat_interval} 秒后触发")
-            await asyncio.sleep(chat_interval)
+
+            # 分段等待，支持被 Fairy 活动重置
+            while True:
+                await asyncio.sleep(1)
+                elapsed = time.time() - last_chat_reset_time
+                if elapsed >= chat_interval:
+                    break
+                # 如果 elapsed 突然接近 0，说明刚被 reset_chat_timer() 重置过
+                if elapsed < 1:
+                    chat_interval = max(60, get_random_chat_interval())
+                    print(f"\n⏳ Fairy活动 detected，重置定时对话，将在 {chat_interval} 秒后触发")
 
             if play_queue.qsize() > 0:
                 print(f"⚠️ 播放队列已有{play_queue.qsize()}个任务，跳过本次定时对话")
                 continue
 
             await run_chat_round()
+            # 本轮对话完成后也重置计时
+            last_chat_reset_time = time.time()
         except Exception as e:
             print(f"❌ 定时对话任务异常：{e}")
             continue
